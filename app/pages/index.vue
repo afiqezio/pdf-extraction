@@ -1,0 +1,612 @@
+<template>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+      <div class="md:flex md:items-center md:justify-between">
+        <div class="flex-1 min-w-0">
+          <h1 class="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
+            Data Extraction
+          </h1>
+          <p class="mt-1 text-sm text-gray-500">
+            Upload files to extract and analyze data from various formats
+          </p>
+        </div>
+        <div class="mt-4 flex md:mt-0 md:ml-4">
+          <UiButton
+            variant="outline"
+            icon="heroicons:document-text"
+            @click="viewExtractionHistory"
+          >
+            View History
+          </UiButton>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+      <!-- Upload Section -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Upload File</h3>
+          
+          <!-- File Upload Area -->
+          <div
+            ref="dropZone"
+            :class="dropZoneClasses"
+            @dragover.prevent="handleDragOver"
+            @dragleave.prevent="handleDragLeave"
+            @drop.prevent="handleDrop"
+            @click="triggerFileInput"
+          >
+            <input
+              ref="fileInput"
+              type="file"
+              class="hidden"
+              accept=".csv,.xlsx,.xls,.json,.xml,.txt,.pdf"
+              @change="handleFileSelect"
+            />
+            
+            <div class="text-center">
+              <Icon 
+                name="heroicons:cloud-arrow-up" 
+                class="mx-auto h-12 w-12 text-gray-400" 
+              />
+              <div class="mt-4">
+                <p class="text-sm text-gray-600">
+                  <span class="font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer">
+                    Click to upload
+                  </span>
+                  or drag and drop
+                </p>
+                <p class="text-xs text-gray-500 mt-1">
+                  CSV, XLSX, JSON, XML, TXT, PDF files up to 10MB
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selected File Info -->
+          <div v-if="selectedFile" class="mt-4 p-4 bg-gray-50 rounded-lg">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <Icon 
+                  :name="getFileIcon(selectedFile.type)" 
+                  class="h-8 w-8 text-gray-400 mr-3" 
+                />
+                <div>
+                  <p class="text-sm font-medium text-gray-900">{{ selectedFile.name }}</p>
+                  <p class="text-xs text-gray-500">
+                    {{ formatFileSize(selectedFile.size) }} • {{ selectedFile.type }}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="text-gray-400 hover:text-gray-600"
+                @click="removeFile"
+              >
+                <Icon name="heroicons:x-mark" class="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          <!-- Extraction Options -->
+          <div v-if="selectedFile" class="mt-6">
+            <h4 class="text-sm font-medium text-gray-900 mb-3">Extraction Options</h4>
+            <div class="space-y-3">
+              <div class="flex items-center">
+                <input
+                  id="auto-detect"
+                  v-model="extractionOptions.autoDetect"
+                  type="checkbox"
+                  class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label for="auto-detect" class="ml-2 text-sm text-gray-700">
+                  Auto-detect data structure
+                </label>
+              </div>
+              <div class="flex items-center">
+                <input
+                  id="include-metadata"
+                  v-model="extractionOptions.includeMetadata"
+                  type="checkbox"
+                  class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label for="include-metadata" class="ml-2 text-sm text-gray-700">
+                  Include file metadata
+                </label>
+              </div>
+              <div class="flex items-center">
+                <input
+                  id="validate-data"
+                  v-model="extractionOptions.validateData"
+                  type="checkbox"
+                  class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label for="validate-data" class="ml-2 text-sm text-gray-700">
+                  Validate extracted data
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload Button -->
+          <div v-if="selectedFile" class="mt-6">
+            <UiButton
+              variant="primary"
+              size="lg"
+              :loading="isUploading"
+              :disabled="!selectedFile"
+              icon="heroicons:arrow-up-tray"
+              block
+              @click="uploadAndExtract"
+            >
+              {{ isUploading ? 'Extracting...' : 'Extract Data' }}
+            </UiButton>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Section -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-medium text-gray-900">Extraction Results</h3>
+            <div v-if="extractionResult" class="flex space-x-2">
+              <UiButton
+                variant="outline"
+                size="sm"
+                icon="heroicons:arrow-down-tray"
+                @click="downloadResults"
+              >
+                Download
+              </UiButton>
+              <UiButton
+                variant="outline"
+                size="sm"
+                icon="heroicons:database"
+                @click="saveToDatabase"
+              >
+                Save to DB
+              </UiButton>
+            </div>
+          </div>
+
+          <!-- Loading State -->
+          <div v-if="isUploading" class="text-center py-12">
+            <UiLoading size="lg" message="Processing your file..." />
+          </div>
+
+          <!-- Empty State -->
+          <div v-else-if="!extractionResult" class="text-center py-12">
+            <Icon name="heroicons:document-magnifying-glass" class="mx-auto h-12 w-12 text-gray-400" />
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No extraction results</h3>
+            <p class="mt-1 text-sm text-gray-500">
+              Upload a file to see extraction results here
+            </p>
+          </div>
+
+          <!-- Results Content -->
+          <div v-else class="space-y-4">
+            <!-- Summary Stats -->
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-blue-50 p-4 rounded-lg">
+                <div class="flex items-center">
+                  <Icon name="heroicons:table-cells" class="h-6 w-6 text-blue-600" />
+                  <div class="ml-3">
+                    <p class="text-sm font-medium text-blue-900">Records Found</p>
+                    <p class="text-2xl font-bold text-blue-600">{{ extractionResult.summary.records }}</p>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-green-50 p-4 rounded-lg">
+                <div class="flex items-center">
+                  <Icon name="heroicons:list-bullet" class="h-6 w-6 text-green-600" />
+                  <div class="ml-3">
+                    <p class="text-sm font-medium text-green-900">Fields Detected</p>
+                    <p class="text-2xl font-bold text-green-600">{{ extractionResult.summary.fields }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Data Preview -->
+            <div>
+              <h4 class="text-sm font-medium text-gray-900 mb-3">Data Preview</h4>
+              <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <div class="overflow-x-auto">
+                  <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th
+                          v-for="field in extractionResult.preview.fields"
+                          :key="field"
+                          class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          {{ field }}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                      <tr
+                        v-for="(row, index) in extractionResult.preview.rows"
+                        :key="index"
+                        class="hover:bg-gray-50"
+                      >
+                        <td
+                          v-for="(value, fieldIndex) in row"
+                          :key="fieldIndex"
+                          class="px-3 py-2 whitespace-nowrap text-sm text-gray-900"
+                        >
+                          {{ value }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- Field Analysis -->
+            <div>
+              <h4 class="text-sm font-medium text-gray-900 mb-3">Field Analysis</h4>
+              <div class="space-y-2">
+                <div
+                  v-for="field in extractionResult.analysis"
+                  :key="field.name"
+                  class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                >
+                  <div>
+                    <p class="text-sm font-medium text-gray-900">{{ field.name }}</p>
+                    <p class="text-xs text-gray-500">{{ field.type }} • {{ field.nullCount }} nulls</p>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <span
+                      :class="getFieldTypeBadgeClass(field.type)"
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                    >
+                      {{ field.type }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Warnings/Errors -->
+            <div v-if="extractionResult.warnings?.length > 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div class="flex">
+                <Icon name="heroicons:exclamation-triangle" class="h-5 w-5 text-yellow-400" />
+                <div class="ml-3">
+                  <h3 class="text-sm font-medium text-yellow-800">Warnings</h3>
+                  <div class="mt-2 text-sm text-yellow-700">
+                    <ul class="list-disc list-inside space-y-1">
+                      <li v-for="warning in extractionResult.warnings" :key="warning">
+                        {{ warning }}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Extractions -->
+    <div v-if="recentExtractions.length > 0" class="mt-8">
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Extractions</h3>
+          <div class="space-y-3">
+            <div
+              v-for="extraction in recentExtractions"
+              :key="extraction.id"
+              class="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+            >
+              <div class="flex items-center">
+                <Icon 
+                  :name="getFileIcon(extraction.fileType)" 
+                  class="h-8 w-8 text-gray-400 mr-3" 
+                />
+                <div>
+                  <p class="text-sm font-medium text-gray-900">{{ extraction.fileName }}</p>
+                  <p class="text-xs text-gray-500">
+                    {{ extraction.records }} records • {{ formatDate(extraction.createdAt) }}
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span
+                  :class="getStatusBadgeClass(extraction.status)"
+                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                >
+                  {{ extraction.status }}
+                </span>
+                <UiButton
+                  variant="ghost"
+                  size="sm"
+                  icon="heroicons:eye"
+                  @click="viewExtraction(extraction.id)"
+                >
+                  View
+                </UiButton>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+
+
+// Reactive state
+const selectedFile = ref(null)
+const isUploading = ref(false)
+const isDragOver = ref(false)
+const extractionResult = ref(null)
+const recentExtractions = ref([])
+
+// File input refs
+const fileInput = ref(null)
+const dropZone = ref(null)
+
+// Extraction options
+const extractionOptions = ref({
+  autoDetect: true,
+  includeMetadata: true,
+  validateData: true
+})
+
+// Computed
+const dropZoneClasses = computed(() => {
+  const base = 'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors duration-200'
+  const state = isDragOver.value 
+    ? 'border-indigo-400 bg-indigo-50' 
+    : 'border-gray-300 hover:border-gray-400'
+  return `${base} ${state}`
+})
+
+// Methods
+const triggerFileInput = () => {
+  fileInput.value?.click()
+}
+
+const handleFileSelect = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    validateAndSetFile(file)
+  }
+}
+
+const handleDragOver = (event) => {
+  event.preventDefault()
+  isDragOver.value = true
+}
+
+const handleDragLeave = (event) => {
+  event.preventDefault()
+  isDragOver.value = false
+}
+
+const handleDrop = (event) => {
+  event.preventDefault()
+  isDragOver.value = false
+  
+  const files = event.dataTransfer.files
+  if (files.length > 0) {
+    validateAndSetFile(files[0])
+  }
+}
+
+const validateAndSetFile = (file) => {
+  // File size validation (10MB limit)
+  const maxSize = 10 * 1024 * 1024
+  if (file.size > maxSize) {
+    alert('File size must be less than 10MB')
+    return
+  }
+
+  // File type validation
+  const allowedTypes = [
+    'text/csv',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/json',
+    'application/xml',
+    'text/xml',
+    'text/plain',
+    'application/pdf'
+  ]
+
+  if (!allowedTypes.includes(file.type) && !file.name.match(/\.(csv|xlsx|xls|json|xml|txt|pdf)$/i)) {
+    alert('Please select a valid file type (CSV, XLSX, JSON, XML, TXT, PDF)')
+    return
+  }
+
+  selectedFile.value = file
+}
+
+const removeFile = () => {
+  selectedFile.value = null
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
+const uploadAndExtract = async () => {
+  if (!selectedFile.value) return
+
+  isUploading.value = true
+  extractionResult.value = null
+
+  try {
+    // Simulate API call - replace with actual API endpoint
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    
+    // Mock extraction result
+    extractionResult.value = {
+      summary: {
+        records: 150,
+        fields: 8
+      },
+      preview: {
+        fields: ['ID', 'Name', 'Email', 'Department', 'Salary', 'Start Date', 'Status', 'Location'],
+        rows: [
+          ['1', 'John Doe', 'john@example.com', 'Engineering', '$75,000', '2023-01-15', 'Active', 'New York'],
+          ['2', 'Jane Smith', 'jane@example.com', 'Marketing', '$65,000', '2023-02-20', 'Active', 'Los Angeles'],
+          ['3', 'Bob Johnson', 'bob@example.com', 'Sales', '$70,000', '2023-03-10', 'Active', 'Chicago']
+        ]
+      },
+      analysis: [
+        { name: 'ID', type: 'Integer', nullCount: 0 },
+        { name: 'Name', type: 'String', nullCount: 0 },
+        { name: 'Email', type: 'Email', nullCount: 0 },
+        { name: 'Department', type: 'String', nullCount: 2 },
+        { name: 'Salary', type: 'Currency', nullCount: 1 },
+        { name: 'Start Date', type: 'Date', nullCount: 0 },
+        { name: 'Status', type: 'String', nullCount: 0 },
+        { name: 'Location', type: 'String', nullCount: 3 }
+      ],
+      warnings: [
+        'Some salary values are missing',
+        'Department field has 2 null values',
+        'Location field has 3 null values'
+      ]
+    }
+
+    // Add to recent extractions
+    recentExtractions.value.unshift({
+      id: Date.now(),
+      fileName: selectedFile.value.name,
+      fileType: selectedFile.value.type,
+      records: 150,
+      status: 'Completed',
+      createdAt: new Date()
+    })
+
+  } catch (error) {
+    console.error('Extraction failed:', error)
+    alert('Extraction failed. Please try again.')
+  } finally {
+    isUploading.value = false
+  }
+}
+
+const downloadResults = () => {
+  if (!extractionResult.value) return
+  
+  // Create and download JSON file
+  const dataStr = JSON.stringify(extractionResult.value, null, 2)
+  const dataBlob = new Blob([dataStr], { type: 'application/json' })
+  const url = URL.createObjectURL(dataBlob)
+  
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `extraction-results-${Date.now()}.json`
+  link.click()
+  
+  URL.revokeObjectURL(url)
+}
+
+const saveToDatabase = () => {
+  if (!extractionResult.value) return
+  
+  // TODO: Implement database save functionality
+  console.log('Saving to database:', extractionResult.value)
+  alert('Save to database functionality will be implemented in the backend')
+}
+
+const viewExtractionHistory = () => {
+  // TODO: Navigate to extraction history page
+  console.log('View extraction history')
+}
+
+const viewExtraction = (id) => {
+  // TODO: Navigate to specific extraction view
+  console.log('View extraction:', id)
+}
+
+// Utility functions
+const getFileIcon = (fileType) => {
+  if (fileType.includes('csv') || fileType.includes('excel')) return 'heroicons:table-cells'
+  if (fileType.includes('json')) return 'heroicons:code-bracket'
+  if (fileType.includes('xml')) return 'heroicons:document-text'
+  if (fileType.includes('pdf')) return 'heroicons:document'
+  return 'heroicons:document'
+}
+
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const formatDate = (date) => {
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const getFieldTypeBadgeClass = (type) => {
+  const classes = {
+    'Integer': 'bg-blue-100 text-blue-800',
+    'String': 'bg-green-100 text-green-800',
+    'Email': 'bg-purple-100 text-purple-800',
+    'Currency': 'bg-yellow-100 text-yellow-800',
+    'Date': 'bg-indigo-100 text-indigo-800'
+  }
+  return classes[type] || 'bg-gray-100 text-gray-800'
+}
+
+const getStatusBadgeClass = (status) => {
+  const classes = {
+    'Completed': 'bg-green-100 text-green-800',
+    'Processing': 'bg-yellow-100 text-yellow-800',
+    'Failed': 'bg-red-100 text-red-800'
+  }
+  return classes[status] || 'bg-gray-100 text-gray-800'
+}
+
+// Lifecycle
+onMounted(() => {
+  // Load recent extractions
+  recentExtractions.value = [
+    {
+      id: 1,
+      fileName: 'employee_data.csv',
+      fileType: 'text/csv',
+      records: 150,
+      status: 'Completed',
+      createdAt: new Date(Date.now() - 86400000)
+    },
+    {
+      id: 2,
+      fileName: 'sales_report.xlsx',
+      fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      records: 89,
+      status: 'Completed',
+      createdAt: new Date(Date.now() - 172800000)
+    }
+  ]
+})
+
+// SEO
+useHead({
+  title: 'Data Extraction - Workbench Platform',
+  meta: [
+    { name: 'description', content: 'Upload and extract data from various file formats with intelligent analysis and validation.' }
+  ]
+})
+</script>
