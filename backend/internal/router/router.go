@@ -3,6 +3,9 @@ package router
 import (
 	"net/http"
 
+	"workbench/internal/core/handlers"
+	"workbench/internal/database"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -26,12 +29,13 @@ func Setup() *echo.Echo {
 	// API routes
 	api := e.Group("/api/v1")
 
-	// Add your API routes here
-	api.GET("/users", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"message": "Users endpoint",
-		})
-	})
+	getDB := database.GetDB()
+
+	// Initialize handlers here
+	userHandler := handlers.NewUserHandler(getDB)
+
+	// Add Routes here
+	userHandler.UserRoutes(api)
 
 	return e
 }
