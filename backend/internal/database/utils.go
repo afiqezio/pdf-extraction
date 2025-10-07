@@ -28,16 +28,6 @@ func OrderBy(sort string) func(db *gorm.DB) *gorm.DB {
 	}
 }
 
-// FilterByTenant returns a function that filters by tenant
-func FilterByTenant(tenantID string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		if tenantID != "" {
-			return db.Where("tenant_id = ?", tenantID)
-		}
-		return db
-	}
-}
-
 // Search returns a function that searches in specified fields
 func Search(query string, fields ...string) func(db *gorm.DB) *gorm.DB {
 	return func(db *gorm.DB) *gorm.DB {

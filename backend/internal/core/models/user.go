@@ -20,35 +20,6 @@ type User struct {
 	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
 }
 
-// Tenant represents a tenant/organization
-type Tenant struct {
-	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	Name      string         `json:"name" gorm:"not null"`
-	Subdomain string         `json:"subdomain" gorm:"uniqueIndex;not null"`
-	Settings  JSON           `json:"settings" gorm:"type:jsonb"`
-	IsActive  bool           `json:"is_active" gorm:"default:true"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
-}
-
-// TenantUser represents the relationship between tenants and users
-type TenantUser struct {
-	ID       uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	TenantID uuid.UUID `json:"tenant_id" gorm:"type:uuid;not null"`
-	UserID   uuid.UUID `json:"user_id" gorm:"type:uuid;not null"`
-	Role     string    `json:"role" gorm:"default:'member'"`
-	IsActive bool      `json:"is_active" gorm:"default:true"`
-
-	// Relationships
-	Tenant Tenant `json:"tenant" gorm:"foreignKey:TenantID"`
-	User   User   `json:"user" gorm:"foreignKey:UserID"`
-
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
-}
-
 // JSON is a custom type for JSON fields
 type JSON map[string]interface{}
 

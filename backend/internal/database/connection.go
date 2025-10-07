@@ -77,9 +77,12 @@ func Migrate(db *gorm.DB) error {
 
 	// Auto migrate models
 	err := db.AutoMigrate(
-		&models.Tenant{},
 		&models.User{},
-		&models.TenantUser{},
+		&models.EPBEBase{},
+		&models.DepthInfo{},
+		&models.MetadataInfo{},
+		&models.EPBEPetrographyCarbonate{},
+		&models.EPBEPetrographyClastic{},
 	)
 
 	if err != nil {

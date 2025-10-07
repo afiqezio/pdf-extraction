@@ -58,7 +58,7 @@ type ServerConfig struct {
 // Load loads configuration from environment variables
 func Load() (*Config, error) {
 	// Load .env file if it exists
-	if err := godotenv.Load("../../.env"); err != nil {
+	if err := godotenv.Load("../.env"); err != nil {
 		log.Printf("Warning: .env file not found: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func Load() (*Config, error) {
 			Port:            getEnvAsInt("DB_PORT", 5432),
 			User:            getEnv("DB_USER", "postgres"),
 			Password:        getEnv("DB_PASSWORD", ""),
-			Name:            getEnv("DB_NAME", "postgres"),
+			Name:            getEnv("DB_NAME", "pdf_extraction"),
 			SSLMode:         getEnv("DB_SSL_MODE", "disable"),
 			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 25),
@@ -87,6 +87,13 @@ func Load() (*Config, error) {
 			CORSOrigins: []string{getEnv("FRONTEND_URL", "http://localhost:3000")},
 		},
 	}
+
+	// Debug: Print the actual database configuration being used
+	log.Printf("🔍 Database Config: Host=%s, Port=%d, User=%s, Name=%s",
+		config.Database.Host,
+		config.Database.Port,
+		config.Database.User,
+		config.Database.Name)
 
 	return config, nil
 }
