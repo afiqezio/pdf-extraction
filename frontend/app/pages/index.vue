@@ -11,15 +11,6 @@
             Upload files to extract and analyze data from various formats
           </p>
         </div>
-        <div class="mt-4 flex md:mt-0 md:ml-4">
-          <UiButton
-            variant="outline"
-            icon="heroicons:document-text"
-            @click="viewExtractionHistory"
-          >
-            View History
-          </UiButton>
-        </div>
       </div>
     </div>
 
@@ -60,7 +51,7 @@
                   or drag and drop
                 </p>
                 <p class="text-xs text-gray-500 mt-1">
-                  CSV, XLSX, JSON, XML, TXT, PDF files up to 10MB
+                  CSV, XLSX, JSON, XML, TXT, PDF files up to 500MB
                 </p>
               </div>
             </div>
@@ -92,7 +83,7 @@
           </div>
 
           <!-- Extraction Options -->
-          <div v-if="selectedFile" class="mt-6">
+          <!-- <div v-if="selectedFile" class="mt-6">
             <h4 class="text-sm font-medium text-gray-900 mb-3">Extraction Options</h4>
             <div class="space-y-3">
               <div class="flex items-center">
@@ -129,7 +120,7 @@
                 </label>
               </div>
             </div>
-          </div>
+          </div> -->
 
           <!-- Upload Button -->
           <div v-if="selectedFile" class="mt-6">
@@ -153,24 +144,6 @@
         <div class="px-4 py-5 sm:p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-medium text-gray-900">Extraction Results</h3>
-            <div v-if="extractionResult" class="flex space-x-2">
-              <UiButton
-                variant="outline"
-                size="sm"
-                icon="heroicons:arrow-down-tray"
-                @click="downloadResults"
-              >
-                Download
-              </UiButton>
-              <UiButton
-                variant="outline"
-                size="sm"
-                icon="heroicons:database"
-                @click="saveToDatabase"
-              >
-                Save to DB
-              </UiButton>
-            </div>
           </div>
 
           <!-- Loading State -->
@@ -249,7 +222,7 @@
             </div>
 
             <!-- Field Analysis -->
-            <div>
+            <!-- <div>
               <h4 class="text-sm font-medium text-gray-900 mb-3">Field Analysis</h4>
               <div class="space-y-2">
                 <div
@@ -271,10 +244,10 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </div> -->
 
             <!-- Warnings/Errors -->
-            <div v-if="extractionResult.warnings?.length > 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <!-- <div v-if="extractionResult.warnings?.length > 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <div class="flex">
                 <Icon name="heroicons:exclamation-triangle" class="h-5 w-5 text-yellow-400" />
                 <div class="ml-3">
@@ -288,7 +261,7 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </div> -->
           </div>
         </div>
       </div>
@@ -406,9 +379,9 @@ const handleDrop = (event) => {
 
 const validateAndSetFile = (file) => {
   // File size validation (10MB limit)
-  const maxSize = 10 * 1024 * 1024
+  const maxSize = 500 * 1024 * 1024
   if (file.size > maxSize) {
-    alert('File size must be less than 10MB')
+    alert('File size must be less than 500MB')
     return
   }
 
@@ -498,35 +471,6 @@ const uploadAndExtract = async () => {
   }
 }
 
-const downloadResults = () => {
-  if (!extractionResult.value) return
-  
-  // Create and download JSON file
-  const dataStr = JSON.stringify(extractionResult.value, null, 2)
-  const dataBlob = new Blob([dataStr], { type: 'application/json' })
-  const url = URL.createObjectURL(dataBlob)
-  
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `extraction-results-${Date.now()}.json`
-  link.click()
-  
-  URL.revokeObjectURL(url)
-}
-
-const saveToDatabase = () => {
-  if (!extractionResult.value) return
-  
-  // TODO: Implement database save functionality
-  console.log('Saving to database:', extractionResult.value)
-  alert('Save to database functionality will be implemented in the backend')
-}
-
-const viewExtractionHistory = () => {
-  // TODO: Navigate to extraction history page
-  console.log('View extraction history')
-}
-
 const viewExtraction = (id) => {
   // TODO: Navigate to specific extraction view
   console.log('View extraction:', id)
@@ -582,24 +526,6 @@ const getStatusBadgeClass = (status) => {
 // Lifecycle
 onMounted(() => {
   // Load recent extractions
-  recentExtractions.value = [
-    {
-      id: 1,
-      fileName: 'employee_data.csv',
-      fileType: 'text/csv',
-      records: 150,
-      status: 'Completed',
-      createdAt: new Date(Date.now() - 86400000)
-    },
-    {
-      id: 2,
-      fileName: 'sales_report.xlsx',
-      fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      records: 89,
-      status: 'Completed',
-      createdAt: new Date(Date.now() - 172800000)
-    }
-  ]
 })
 
 // SEO

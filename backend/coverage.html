@@ -1,0 +1,1904 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>server: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">workbench/cmd/server/main.go (0.0%)</option>
+				
+				<option value="file1">workbench/internal/auth/jwt.go (80.0%)</option>
+				
+				<option value="file2">workbench/internal/auth/service.go (76.7%)</option>
+				
+				<option value="file3">workbench/internal/config/config.go (85.0%)</option>
+				
+				<option value="file4">workbench/internal/core/handlers/auth.go (76.4%)</option>
+				
+				<option value="file5">workbench/internal/core/models/base.go (41.7%)</option>
+				
+				<option value="file6">workbench/internal/core/models/tenant.go (100.0%)</option>
+				
+				<option value="file7">workbench/internal/core/models/user.go (80.0%)</option>
+				
+				<option value="file8">workbench/internal/database/connection.go (50.0%)</option>
+				
+				<option value="file9">workbench/internal/database/seeder.go (0.0%)</option>
+				
+				<option value="file10">workbench/internal/database/utils.go (0.0%)</option>
+				
+				<option value="file11">workbench/internal/testutils/config.go (0.0%)</option>
+				
+				<option value="file12">workbench/internal/testutils/database.go (0.0%)</option>
+				
+				<option value="file13">workbench/internal/testutils/server.go (0.0%)</option>
+				
+				<option value="file14">workbench/pkg/middleware/jwt.go (60.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
+    
+    "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4/middleware"
+    
+    "workbench/internal/auth"
+    "workbench/internal/config"
+    "workbench/internal/core/handlers"
+    "workbench/internal/database"
+    customMiddleware "workbench/pkg/middleware"
+)
+
+func main() <span class="cov0" title="0">{
+    fmt.Println("🚀 Workbench Platform Starting...")
+    
+    // Load configuration
+    cfg, err := config.Load()
+    if err != nil </span><span class="cov0" title="0">{
+        log.Fatal("Failed to load configuration:", err)
+    }</span>
+    
+    // Initialize database
+    <span class="cov0" title="0">db, err := database.Initialize(&amp;cfg.Database)
+    if err != nil </span><span class="cov0" title="0">{
+        log.Fatal("Failed to initialize database:", err)
+    }</span>
+    
+    // Initialize Echo
+    <span class="cov0" title="0">e := echo.New()
+    
+    // Configure Echo
+    e.HideBanner = true
+    e.Validator = nil // We'll use our own validator in handlers
+    
+    // Global middleware
+    e.Use(middleware.Logger())
+    e.Use(middleware.Recover())
+    e.Use(middleware.RequestID())
+    e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+        AllowOrigins:     cfg.Server.CORSOrigins,
+        AllowMethods:     []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
+        AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+        AllowCredentials: true,
+    }))
+    
+    // Initialize JWT manager
+    jwtManager := auth.NewJWTManager(
+        os.Getenv("JWT_SECRET"),
+        24*time.Hour, // Token duration
+    )
+    
+    // Initialize services
+    authService := auth.NewService(db, jwtManager)
+    
+    // Initialize handlers
+    authHandler := handlers.NewAuthHandler(authService)
+    
+    // Setup routes
+    setupRoutes(e, authHandler, jwtManager)
+    
+    // Start server
+    go func() </span><span class="cov0" title="0">{
+        address := fmt.Sprintf(":%s", cfg.Server.Port)
+        log.Printf("✅ Server starting on %s", address)
+        if err := e.Start(address); err != nil </span><span class="cov0" title="0">{
+            log.Printf("Server error: %v", err)
+        }</span>
+    }()
+    
+    // Wait for interrupt signal
+    <span class="cov0" title="0">quit := make(chan os.Signal, 1)
+    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+    &lt;-quit
+    
+    log.Println("Shutting down server...")
+    
+    // Cleanup
+    if err := database.Close(); err != nil </span><span class="cov0" title="0">{
+        log.Printf("Error closing database: %v", err)
+    }</span>
+    
+    <span class="cov0" title="0">log.Println("Server stopped")</span>
+}
+
+func setupRoutes(e *echo.Echo, authHandler *handlers.AuthHandler, jwtManager *auth.JWTManager) <span class="cov0" title="0">{
+    // API v1 group
+    api := e.Group("/api/v1")
+    
+    // Health check
+    api.GET("/health", func(c echo.Context) error </span><span class="cov0" title="0">{
+        return c.JSON(200, map[string]string{
+            "status": "healthy",
+            "time":   time.Now().Format(time.RFC3339),
+        })
+    }</span>)
+    
+    // Auth routes (public)
+    <span class="cov0" title="0">authGroup := api.Group("/auth")
+    authGroup.POST("/register", authHandler.Register)
+    authGroup.POST("/login", authHandler.Login)
+    
+    // Protected routes
+    protected := api.Group("")
+    protected.Use(customMiddleware.JWTMiddleware(customMiddleware.JWTConfig{
+        JWTManager: jwtManager,
+    }))
+    
+    // Auth routes (protected)
+    protected.GET("/auth/me", authHandler.Me)
+    protected.POST("/auth/refresh", authHandler.Refresh)
+    
+    // Test protected endpoint
+    protected.GET("/test", func(c echo.Context) error </span><span class="cov0" title="0">{
+        claims := c.Get("claims").(*auth.JWTClaims)
+        return c.JSON(200, map[string]interface{}{
+            "message": "This is a protected route",
+            "user_id": claims.UserID,
+            "email":   claims.Email,
+            "role":    claims.Role,
+        })
+    }</span>)
+    
+    <span class="cov0" title="0">log.Println("✅ Routes configured")</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package auth
+
+import (
+        "errors"
+        "fmt"
+        "time"
+
+        "github.com/golang-jwt/jwt/v5"
+        "github.com/google/uuid"
+)
+
+var (
+        ErrInvalidToken = errors.New("invalid token")
+        ErrExpiredToken = errors.New("token has expired")
+)
+
+// JWTClaims represents the JWT claims
+type JWTClaims struct {
+        UserID   uuid.UUID `json:"user_id"`
+        TenantID uuid.UUID `json:"tenant_id"`
+        Email    string    `json:"email"`
+        Role     string    `json:"role"`
+        jwt.RegisteredClaims
+}
+
+// JWTManager handles JWT operations
+type JWTManager struct {
+        secretKey     string
+        tokenDuration time.Duration
+}
+
+// NewJWTManager creates a new JWT manager
+func NewJWTManager(secretKey string, duration time.Duration) *JWTManager <span class="cov8" title="1">{
+        return &amp;JWTManager{
+                secretKey:     secretKey,
+                tokenDuration: duration,
+        }
+}</span>
+
+// GenerateToken generates a new JWT token
+func (m *JWTManager) GenerateToken(userID, tenantID uuid.UUID, email, role string) (string, error) <span class="cov8" title="1">{
+        claims := &amp;JWTClaims{
+                UserID:   userID,
+                TenantID: tenantID,
+                Email:    email,
+                Role:     role,
+                RegisteredClaims: jwt.RegisteredClaims{
+                        ExpiresAt: jwt.NewNumericDate(time.Now().Add(m.tokenDuration)),
+                        IssuedAt:  jwt.NewNumericDate(time.Now()),
+                        NotBefore: jwt.NewNumericDate(time.Now()),
+                        Issuer:    "workbench",
+                        Subject:   userID.String(),
+                },
+        }
+
+        token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+        tokenString, err := token.SignedString([]byte(m.secretKey))
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to sign token: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return tokenString, nil</span>
+}
+
+// ValidateToken validates a JWT token
+func (m *JWTManager) ValidateToken(tokenString string) (*JWTClaims, error) <span class="cov8" title="1">{
+        token, err := jwt.ParseWithClaims(
+                tokenString,
+                &amp;JWTClaims{},
+                func(token *jwt.Token) (interface{}, error) </span><span class="cov8" title="1">{
+                        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok </span><span class="cov0" title="0">{
+                                return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+                        }</span>
+                        <span class="cov8" title="1">return []byte(m.secretKey), nil</span>
+                },
+        )
+
+        <span class="cov8" title="1">if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">claims, ok := token.Claims.(*JWTClaims)
+        if !ok </span><span class="cov0" title="0">{
+                return nil, ErrInvalidToken
+        }</span>
+
+        <span class="cov8" title="1">if !token.Valid </span><span class="cov0" title="0">{
+                return nil, ErrInvalidToken
+        }</span>
+
+        // Check expiration
+        <span class="cov8" title="1">if claims.ExpiresAt.Before(time.Now()) </span><span class="cov0" title="0">{
+                return nil, ErrExpiredToken
+        }</span>
+
+        <span class="cov8" title="1">return claims, nil</span>
+}
+
+// RefreshToken generates a new token from existing claims
+func (m *JWTManager) RefreshToken(claims *JWTClaims) (string, error) <span class="cov8" title="1">{
+        // Extend expiration
+        claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(m.tokenDuration))
+        claims.IssuedAt = jwt.NewNumericDate(time.Now())
+
+        token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+        return token.SignedString([]byte(m.secretKey))
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package auth
+
+import (
+        "errors"
+        "fmt"
+        "strings"
+        "time"
+
+        "workbench/internal/core/models"
+
+        "github.com/google/uuid"
+        "gorm.io/gorm"
+)
+
+var (
+        ErrInvalidCredentials = errors.New("invalid email or password")
+        ErrEmailAlreadyExists = errors.New("email already exists")
+        ErrTenantNotFound     = errors.New("tenant not found")
+        ErrUserNotFound       = errors.New("user not found")
+        ErrUserInactive       = errors.New("user account is inactive")
+        ErrUserLocked         = errors.New("user account is locked")
+)
+
+// Service handles authentication business logic
+type Service struct {
+        db         *gorm.DB
+        jwtManager *JWTManager
+}
+
+// NewService creates a new auth service
+func NewService(db *gorm.DB, jwtManager *JWTManager) *Service <span class="cov8" title="1">{
+        return &amp;Service{
+                db:         db,
+                jwtManager: jwtManager,
+        }
+}</span>
+
+// RegisterRequest represents registration request
+type RegisterRequest struct {
+        Email      string `json:"email" validate:"required,email"`
+        Password   string `json:"password" validate:"required,min=6"`
+        FirstName  string `json:"first_name" validate:"required,min=1,max=100"`
+        LastName   string `json:"last_name" validate:"required,min=1,max=100"`
+        TenantName string `json:"tenant_name" validate:"required,min=2,max=255"`
+}
+
+// LoginRequest represents login request
+type LoginRequest struct {
+        Email    string `json:"email" validate:"required,email"`
+        Password string `json:"password" validate:"required"`
+}
+
+// AuthResponse represents authentication response
+type AuthResponse struct {
+        Token     string         `json:"token"`
+        User      *models.User   `json:"user"`
+        Tenant    *models.Tenant `json:"tenant"`
+        ExpiresAt time.Time      `json:"expires_at"`
+}
+
+// Register creates a new user and tenant
+func (s *Service) Register(req *RegisterRequest) (*AuthResponse, error) <span class="cov8" title="1">{
+        // Normalize email
+        req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+        // Check if email already exists
+        var existingUser models.User
+        if err := s.db.Where("email = ?", req.Email).First(&amp;existingUser).Error; err == nil </span><span class="cov8" title="1">{
+                return nil, ErrEmailAlreadyExists
+        }</span>
+
+        // Start transaction
+        <span class="cov8" title="1">tx := s.db.Begin()
+        defer func() </span><span class="cov8" title="1">{
+                if r := recover(); r != nil </span><span class="cov0" title="0">{
+                        tx.Rollback()
+                }</span>
+        }()
+
+        // Create tenant
+        <span class="cov8" title="1">tenant := &amp;models.Tenant{
+                Name:      req.TenantName,
+                Subdomain: s.generateSubdomain(req.TenantName),
+                Plan:      "free",
+                MaxUsers:  5,
+                IsActive:  true,
+                Settings:  models.JSON{"onboarding_completed": false},
+        }
+
+        if err := tx.Create(tenant).Error; err != nil </span><span class="cov0" title="0">{
+                tx.Rollback()
+                return nil, fmt.Errorf("failed to create tenant: %w", err)
+        }</span>
+
+        // Create user
+        <span class="cov8" title="1">user := &amp;models.User{
+                Email:         req.Email,
+                Password:      req.Password, // Will be hashed by BeforeCreate hook
+                FirstName:     req.FirstName,
+                LastName:      req.LastName,
+                IsActive:      true,
+                EmailVerified: false, // Email verification can be added later
+        }
+
+        if err := tx.Create(user).Error; err != nil </span><span class="cov0" title="0">{
+                tx.Rollback()
+                return nil, fmt.Errorf("failed to create user: %w", err)
+        }</span>
+
+        // Associate user with tenant as admin
+        <span class="cov8" title="1">tenantUser := &amp;models.TenantUser{
+                TenantID: tenant.ID,
+                UserID:   user.ID,
+                Role:     "admin", // First user is admin
+                IsActive: true,
+        }
+
+        if err := tx.Create(tenantUser).Error; err != nil </span><span class="cov0" title="0">{
+                tx.Rollback()
+                return nil, fmt.Errorf("failed to associate user with tenant: %w", err)
+        }</span>
+
+        // Commit transaction
+        <span class="cov8" title="1">if err := tx.Commit().Error; err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to commit transaction: %w", err)
+        }</span>
+
+        // Generate token
+        <span class="cov8" title="1">token, err := s.jwtManager.GenerateToken(user.ID, tenant.ID, user.Email, "admin")
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to generate token: %w", err)
+        }</span>
+
+        // Clear password from response
+        <span class="cov8" title="1">user.Password = ""
+
+        return &amp;AuthResponse{
+                Token:     token,
+                User:      user,
+                Tenant:    tenant,
+                ExpiresAt: time.Now().Add(24 * time.Hour),
+        }, nil</span>
+}
+
+// Login authenticates a user
+func (s *Service) Login(req *LoginRequest) (*AuthResponse, error) <span class="cov8" title="1">{
+        // Normalize email
+        req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+        // Find user
+        var user models.User
+        if err := s.db.Where("email = ?", req.Email).First(&amp;user).Error; err != nil </span><span class="cov8" title="1">{
+                if errors.Is(err, gorm.ErrRecordNotFound) </span><span class="cov8" title="1">{
+                        return nil, ErrInvalidCredentials
+                }</span>
+                <span class="cov0" title="0">return nil, fmt.Errorf("database error: %w", err)</span>
+        }
+
+        // Check password
+        <span class="cov8" title="1">if !user.CheckPassword(req.Password) </span><span class="cov8" title="1">{
+                // Increment failed attempts
+                s.db.Model(&amp;user).UpdateColumn("failed_attempts", user.FailedAttempts+1)
+
+                // Lock account after 5 failed attempts
+                if user.FailedAttempts &gt;= 4 </span><span class="cov8" title="1">{
+                        lockUntil := time.Now().Add(30 * time.Minute)
+                        s.db.Model(&amp;user).UpdateColumn("locked_until", lockUntil)
+                }</span>
+
+                <span class="cov8" title="1">return nil, ErrInvalidCredentials</span>
+        }
+
+        // Check if account is locked
+        <span class="cov8" title="1">if user.IsLocked() </span><span class="cov8" title="1">{
+                return nil, ErrUserLocked
+        }</span>
+
+        // Check if account is active
+        <span class="cov8" title="1">if !user.IsActive </span><span class="cov0" title="0">{
+                return nil, ErrUserInactive
+        }</span>
+
+        // Get user's tenants
+        <span class="cov8" title="1">var tenantUsers []models.TenantUser
+        if err := s.db.Where("user_id = ? AND is_active = ?", user.ID, true).
+                Preload("Tenant").
+                Find(&amp;tenantUsers).Error; err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to get user tenants: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">if len(tenantUsers) == 0 </span><span class="cov0" title="0">{
+                return nil, ErrTenantNotFound
+        }</span>
+
+        // Use first active tenant (in production, you might want to let user choose)
+        <span class="cov8" title="1">tenantUser := tenantUsers[0]
+        tenant := tenantUser.Tenant
+
+        // Reset failed attempts and update last login
+        updates := map[string]interface{}{
+                "failed_attempts": 0,
+                "last_login_at":   time.Now(),
+                "locked_until":    nil,
+        }
+        s.db.Model(&amp;user).Updates(updates)
+
+        // Generate token
+        token, err := s.jwtManager.GenerateToken(
+                user.ID,
+                tenant.ID,
+                user.Email,
+                tenantUser.Role,
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to generate token: %w", err)
+        }</span>
+
+        // Clear password from response
+        <span class="cov8" title="1">user.Password = ""
+
+        return &amp;AuthResponse{
+                Token:     token,
+                User:      &amp;user,
+                Tenant:    &amp;tenant,
+                ExpiresAt: time.Now().Add(24 * time.Hour),
+        }, nil</span>
+}
+
+// ValidateToken validates a JWT token and returns claims
+func (s *Service) ValidateToken(token string) (*JWTClaims, error) <span class="cov8" title="1">{
+        return s.jwtManager.ValidateToken(token)
+}</span>
+
+// RefreshToken generates a new token from existing claims
+func (s *Service) RefreshToken(claims *JWTClaims) (string, error) <span class="cov8" title="1">{
+        return s.jwtManager.RefreshToken(claims)
+}</span>
+
+// GetUserByID gets a user by ID
+func (s *Service) GetUserByID(userID uuid.UUID) (*models.User, error) <span class="cov8" title="1">{
+        var user models.User
+        if err := s.db.Where("id = ?", userID).First(&amp;user).Error; err != nil </span><span class="cov0" title="0">{
+                if errors.Is(err, gorm.ErrRecordNotFound) </span><span class="cov0" title="0">{
+                        return nil, ErrUserNotFound
+                }</span>
+                <span class="cov0" title="0">return nil, err</span>
+        }
+        <span class="cov8" title="1">return &amp;user, nil</span>
+}
+
+// generateSubdomain generates a subdomain from tenant name
+func (s *Service) generateSubdomain(name string) string <span class="cov8" title="1">{
+        // Simple subdomain generation - in production, ensure uniqueness
+        subdomain := strings.ToLower(name)
+        subdomain = strings.ReplaceAll(subdomain, " ", "-")
+        subdomain = strings.ReplaceAll(subdomain, "'", "")
+        subdomain = strings.ReplaceAll(subdomain, ".", "")
+
+        // Add random suffix to ensure uniqueness
+        randomSuffix := uuid.New().String()[:8]
+        subdomain = fmt.Sprintf("%s-%s", subdomain, randomSuffix)
+
+        return subdomain
+}</span>
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package config
+
+import (
+        "fmt"
+        "log"
+        "os"
+        "strconv"
+        "time"
+
+        "github.com/joho/godotenv"
+)
+
+// Config holds all configuration for our application
+type Config struct {
+        App      AppConfig
+        Database DatabaseConfig
+        Redis    RedisConfig
+        Server   ServerConfig
+}
+
+// AppConfig holds application configuration
+type AppConfig struct {
+        Name        string
+        Environment string
+        Debug       bool
+        LogLevel    string
+}
+
+// DatabaseConfig holds database configuration
+type DatabaseConfig struct {
+        Host            string
+        Port            int
+        User            string
+        Password        string
+        Name            string
+        SSLMode         string
+        MaxOpenConns    int
+        MaxIdleConns    int
+        ConnMaxLifetime time.Duration
+}
+
+// RedisConfig holds Redis configuration
+type RedisConfig struct {
+        Host     string
+        Port     int
+        Password string
+        DB       int
+}
+
+// ServerConfig holds server configuration
+type ServerConfig struct {
+        Port        string
+        BackendURL  string
+        FrontendURL string
+        CORSOrigins []string
+}
+
+// Load loads configuration from environment variables
+func Load() (*Config, error) <span class="cov8" title="1">{
+        // Load .env file if it exists
+        if err := godotenv.Load("../../.env"); err != nil </span><span class="cov8" title="1">{
+                log.Printf("Warning: .env file not found: %v", err)
+        }</span>
+
+        <span class="cov8" title="1">config := &amp;Config{
+                App: AppConfig{
+                        Name:        getEnv("APP_NAME", "Workbench"),
+                        Environment: getEnv("APP_ENV", "development"),
+                        Debug:       getEnvAsBool("APP_DEBUG", true),
+                        LogLevel:    getEnv("LOG_LEVEL", "debug"),
+                },
+                Database: DatabaseConfig{
+                        Host:            getEnv("DB_HOST", "localhost"),
+                        Port:            getEnvAsInt("DB_PORT", 5432),
+                        User:            getEnv("DB_USER", "workbench"),
+                        Password:        getEnv("DB_PASSWORD", "workbench123"),
+                        Name:            getEnv("DB_NAME", "workbench_db"),
+                        SSLMode:         getEnv("DB_SSL_MODE", "disable"),
+                        MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
+                        MaxIdleConns:    getEnvAsInt("DB_MAX_IDLE_CONNS", 25),
+                        ConnMaxLifetime: getEnvAsDuration("DB_CONN_MAX_LIFETIME", 5*time.Minute),
+                },
+                Redis: RedisConfig{
+                        Host:     getEnv("REDIS_HOST", "localhost"),
+                        Port:     getEnvAsInt("REDIS_PORT", 6379),
+                        Password: getEnv("REDIS_PASSWORD", ""),
+                        DB:       getEnvAsInt("REDIS_DB", 0),
+                },
+                Server: ServerConfig{
+                        Port:        getEnv("BACKEND_PORT", "8081"),
+                        BackendURL:  getEnv("BACKEND_URL", "http://localhost:8081"),
+                        FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
+                        CORSOrigins: []string{getEnv("FRONTEND_URL", "http://localhost:3000")},
+                },
+        }
+
+        return config, nil</span>
+}
+
+// GetDSN returns PostgreSQL connection string
+func (c *DatabaseConfig) GetDSN() string <span class="cov8" title="1">{
+        return fmt.Sprintf(
+                "host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+                c.Host, c.Port, c.User, c.Password, c.Name, c.SSLMode,
+        )
+}</span>
+
+// Helper functions
+func getEnv(key, defaultValue string) string <span class="cov8" title="1">{
+        if value := os.Getenv(key); value != "" </span><span class="cov8" title="1">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvAsInt(key string, defaultValue int) int <span class="cov8" title="1">{
+        valueStr := getEnv(key, "")
+        if value, err := strconv.Atoi(valueStr); err == nil </span><span class="cov0" title="0">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool <span class="cov8" title="1">{
+        valueStr := getEnv(key, "")
+        if value, err := strconv.ParseBool(valueStr); err == nil </span><span class="cov0" title="0">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return defaultValue</span>
+}
+
+func getEnvAsDuration(key string, defaultValue time.Duration) time.Duration <span class="cov8" title="1">{
+        valueStr := getEnv(key, "")
+        if value, err := time.ParseDuration(valueStr); err == nil </span><span class="cov0" title="0">{
+                return value
+        }</span>
+        <span class="cov8" title="1">return defaultValue</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package handlers
+
+import (
+        "net/http"
+        "strings"
+
+        "workbench/internal/auth"
+
+        "github.com/go-playground/validator/v10"
+        "github.com/labstack/echo/v4"
+)
+
+// AuthHandler handles authentication endpoints
+type AuthHandler struct {
+        authService *auth.Service
+        validator   *validator.Validate
+}
+
+// NewAuthHandler creates a new auth handler
+func NewAuthHandler(authService *auth.Service) *AuthHandler <span class="cov8" title="1">{
+        return &amp;AuthHandler{
+                authService: authService,
+                validator:   validator.New(),
+        }
+}</span>
+
+// Register handles user registration
+// @Summary Register a new user and tenant
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body auth.RegisterRequest true "Registration details"
+// @Success 201 {object} auth.AuthResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /auth/register [post]
+func (h *AuthHandler) Register(c echo.Context) error <span class="cov8" title="1">{
+        var req auth.RegisterRequest
+
+        // Bind request
+        if err := c.Bind(&amp;req); err != nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+        }</span>
+
+        // Validate request
+        <span class="cov8" title="1">if err := h.validator.Struct(&amp;req); err != nil </span><span class="cov8" title="1">{
+                return echo.NewHTTPError(http.StatusBadRequest, formatValidationError(err))
+        }</span>
+
+        // Register user
+        <span class="cov8" title="1">response, err := h.authService.Register(&amp;req)
+        if err != nil </span><span class="cov8" title="1">{
+                if err == auth.ErrEmailAlreadyExists </span><span class="cov8" title="1">{
+                        return echo.NewHTTPError(http.StatusConflict, "Email already exists")
+                }</span>
+                <span class="cov0" title="0">return echo.NewHTTPError(http.StatusInternalServerError, "Registration failed")</span>
+        }
+
+        <span class="cov8" title="1">return c.JSON(http.StatusCreated, response)</span>
+}
+
+// Login handles user login
+// @Summary Login a user
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body auth.LoginRequest true "Login credentials"
+// @Success 200 {object} auth.AuthResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/login [post]
+func (h *AuthHandler) Login(c echo.Context) error <span class="cov8" title="1">{
+        var req auth.LoginRequest
+
+        // Bind request
+        if err := c.Bind(&amp;req); err != nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusBadRequest, "Invalid request format")
+        }</span>
+
+        // Validate request
+        <span class="cov8" title="1">if err := h.validator.Struct(&amp;req); err != nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusBadRequest, formatValidationError(err))
+        }</span>
+
+        // Login user
+        <span class="cov8" title="1">response, err := h.authService.Login(&amp;req)
+        if err != nil </span><span class="cov8" title="1">{
+                switch err </span>{
+                case auth.ErrInvalidCredentials:<span class="cov8" title="1">
+                        return echo.NewHTTPError(http.StatusUnauthorized, "Invalid email or password")</span>
+                case auth.ErrUserInactive:<span class="cov0" title="0">
+                        return echo.NewHTTPError(http.StatusForbidden, "Account is inactive")</span>
+                case auth.ErrUserLocked:<span class="cov8" title="1">
+                        return echo.NewHTTPError(http.StatusForbidden, "Account is locked. Please try again later")</span>
+                default:<span class="cov0" title="0">
+                        return echo.NewHTTPError(http.StatusInternalServerError, "Login failed")</span>
+                }
+        }
+
+        <span class="cov8" title="1">return c.JSON(http.StatusOK, response)</span>
+}
+
+// Me returns the current user information
+// @Summary Get current user information
+// @Tags Auth
+// @Security Bearer
+// @Produce json
+// @Success 200 {object} models.User
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/me [get]
+func (h *AuthHandler) Me(c echo.Context) error <span class="cov8" title="1">{
+        // Get user from context (set by JWT middleware)
+        claims := c.Get("claims").(*auth.JWTClaims)
+
+        // Get user from database
+        user, err := h.authService.GetUserByID(claims.UserID)
+        if err != nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusNotFound, "User not found")
+        }</span>
+
+        // Clear password
+        <span class="cov8" title="1">user.Password = ""
+
+        return c.JSON(http.StatusOK, user)</span>
+}
+
+// Refresh refreshes the JWT token
+// @Summary Refresh JWT token
+// @Tags Auth
+// @Security Bearer
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/refresh [post]
+func (h *AuthHandler) Refresh(c echo.Context) error <span class="cov8" title="1">{
+        // Get token from header
+        authHeader := c.Request().Header.Get("Authorization")
+        if authHeader == "" </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusUnauthorized, "Missing authorization header")
+        }</span>
+
+        // Extract token
+        <span class="cov8" title="1">tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+        // Validate and refresh token
+        claims, err := h.authService.ValidateToken(tokenString)
+        if err != nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusUnauthorized, "Invalid token")
+        }</span>
+
+        // Generate new token
+        <span class="cov8" title="1">newToken, err := h.authService.RefreshToken(claims)
+        if err != nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusInternalServerError, "Failed to refresh token")
+        }</span>
+
+        <span class="cov8" title="1">return c.JSON(http.StatusOK, map[string]string{
+                "token": newToken,
+        })</span>
+}
+
+// ErrorResponse represents an error response
+type ErrorResponse struct {
+        Error   string `json:"error"`
+        Message string `json:"message"`
+}
+
+// formatValidationError formats validation errors
+func formatValidationError(err error) string <span class="cov8" title="1">{
+        if validationErrors, ok := err.(validator.ValidationErrors); ok </span><span class="cov8" title="1">{
+                var messages []string
+                for _, e := range validationErrors </span><span class="cov8" title="1">{
+                        messages = append(messages, formatFieldError(e))
+                }</span>
+                <span class="cov8" title="1">return strings.Join(messages, ", ")</span>
+        }
+        <span class="cov0" title="0">return "Validation failed"</span>
+}
+
+// formatFieldError formats a single field error
+func formatFieldError(e validator.FieldError) string <span class="cov8" title="1">{
+        field := strings.ToLower(e.Field())
+        switch e.Tag() </span>{
+        case "required":<span class="cov8" title="1">
+                return field + " is required"</span>
+        case "email":<span class="cov8" title="1">
+                return field + " must be a valid email"</span>
+        case "min":<span class="cov8" title="1">
+                return field + " must be at least " + e.Param() + " characters"</span>
+        case "max":<span class="cov0" title="0">
+                return field + " must be at most " + e.Param() + " characters"</span>
+        default:<span class="cov0" title="0">
+                return field + " is invalid"</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package models
+
+import (
+        "database/sql/driver"
+        "encoding/json"
+        "errors"
+        "time"
+
+        "github.com/google/uuid"
+        "gorm.io/gorm"
+)
+
+// BaseModel contains common fields for all models
+type BaseModel struct {
+        ID        uuid.UUID      `gorm:"type:uuid;primary_key" json:"id"`
+        CreatedAt time.Time      `json:"created_at"`
+        UpdatedAt time.Time      `json:"updated_at"`
+        DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
+}
+
+// BeforeCreate will set a UUID rather than numeric ID
+func (b *BaseModel) BeforeCreate(tx *gorm.DB) error <span class="cov8" title="1">{
+        if b.ID == uuid.Nil </span><span class="cov8" title="1">{
+                b.ID = uuid.New()
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+// JSON type for JSONB PostgreSQL fields
+type JSON map[string]interface{}
+
+// Value implements the driver.Valuer interface
+func (j JSON) Value() (driver.Value, error) <span class="cov8" title="1">{
+        if j == nil </span><span class="cov0" title="0">{
+                return nil, nil
+        }</span>
+        <span class="cov8" title="1">return json.Marshal(j)</span>
+}
+
+// Scan implements the sql.Scanner interface
+func (j *JSON) Scan(value interface{}) error <span class="cov8" title="1">{
+        if value == nil </span><span class="cov0" title="0">{
+                *j = make(map[string]interface{})
+                return nil
+        }</span>
+
+        <span class="cov8" title="1">bytes, ok := value.([]byte)
+        if !ok </span><span class="cov0" title="0">{
+                return errors.New("type assertion to []byte failed")
+        }</span>
+
+        <span class="cov8" title="1">return json.Unmarshal(bytes, j)</span>
+}
+
+// Ensure JSON is not null when creating
+func (j JSON) GormDataType() string <span class="cov8" title="1">{
+        return "jsonb"
+}</span>
+
+// TableName helper interface
+type Tabler interface {
+        TableName() string
+}
+
+// AuditLog interface for models that need audit logging
+type Auditable interface {
+        GetAuditInfo() map[string]interface{}
+}
+
+// Pagination struct for paginated queries
+type Pagination struct {
+        Limit      int    `json:"limit"`
+        Page       int    `json:"page"`
+        Sort       string `json:"sort"`
+        TotalRows  int64  `json:"total_rows"`
+        TotalPages int    `json:"total_pages"`
+}
+
+func (p *Pagination) GetOffset() int <span class="cov0" title="0">{
+        return (p.Page - 1) * p.Limit
+}</span>
+
+func (p *Pagination) GetLimit() int <span class="cov0" title="0">{
+        if p.Limit == 0 </span><span class="cov0" title="0">{
+                p.Limit = 10
+        }</span>
+        <span class="cov0" title="0">return p.Limit</span>
+}
+
+func (p *Pagination) GetPage() int <span class="cov0" title="0">{
+        if p.Page == 0 </span><span class="cov0" title="0">{
+                p.Page = 1
+        }</span>
+        <span class="cov0" title="0">return p.Page</span>
+}
+
+func (p *Pagination) GetSort() string <span class="cov0" title="0">{
+        if p.Sort == "" </span><span class="cov0" title="0">{
+                p.Sort = "created_at desc"
+        }</span>
+        <span class="cov0" title="0">return p.Sort</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package models
+
+import (
+        "time"
+
+        "github.com/google/uuid"
+        "gorm.io/gorm"
+)
+
+// Tenant represents an organization/company in the system
+type Tenant struct {
+        BaseModel
+        Name        string `gorm:"type:varchar(255);not null;index" json:"name" validate:"required,min=2,max=255"`
+        Subdomain   string `gorm:"type:varchar(100);unique;not null" json:"subdomain" validate:"required,min=2,max=100"`
+        Description string `gorm:"type:text" json:"description"`
+        Logo        string `gorm:"type:varchar(500)" json:"logo"`
+        Website     string `gorm:"type:varchar(500)" json:"website"`
+        Settings    JSON   `gorm:"type:jsonb;default:'{}'" json:"settings"`
+        IsActive    bool   `gorm:"default:true" json:"is_active"`
+
+        // Subscription info
+        Plan       string     `gorm:"type:varchar(50);default:'free'" json:"plan"`
+        MaxUsers   int        `gorm:"default:5" json:"max_users"`
+        ValidUntil *time.Time `json:"valid_until,omitempty"`
+
+        // Relations
+        Users       []User    `gorm:"many2many:tenant_users;" json:"users,omitempty"`
+        CreatedByID uuid.UUID `gorm:"type:uuid" json:"created_by_id"`
+}
+
+// TableName specifies the table name for Tenant
+func (Tenant) TableName() string <span class="cov8" title="1">{
+        return "tenants"
+}</span>
+
+// TenantUser represents the many-to-many relationship between tenants and users
+type TenantUser struct {
+        ID       uuid.UUID `gorm:"type:uuid;primary_key" json:"id"`
+        TenantID uuid.UUID `gorm:"type:uuid;not null;index" json:"tenant_id"`
+        UserID   uuid.UUID `gorm:"type:uuid;not null;index" json:"user_id"`
+        Role     string    `gorm:"type:varchar(50);default:'member'" json:"role"`
+        IsActive bool      `gorm:"default:true" json:"is_active"`
+        JoinedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"joined_at"`
+
+        // Relations
+        Tenant Tenant `gorm:"foreignKey:TenantID" json:"tenant,omitempty"`
+        User   User   `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+// BeforeCreate sets UUID for TenantUser
+func (tu *TenantUser) BeforeCreate(tx *gorm.DB) error <span class="cov8" title="1">{
+        if tu.ID == uuid.Nil </span><span class="cov8" title="1">{
+                tu.ID = uuid.New()
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+// TableName specifies the table name for TenantUser
+func (TenantUser) TableName() string <span class="cov8" title="1">{
+        return "tenant_users"
+}</span>
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package models
+
+import (
+        "strings"
+        "time"
+
+        "golang.org/x/crypto/bcrypt"
+        "gorm.io/gorm"
+)
+
+// UserRole defines user roles
+type UserRole string
+
+const (
+        RoleAdmin   UserRole = "admin"
+        RoleManager UserRole = "manager"
+        RoleMember  UserRole = "member"
+        RoleViewer  UserRole = "viewer"
+)
+
+// User represents a user in the system
+type User struct {
+        BaseModel
+        Email       string `gorm:"type:varchar(255);unique;not null;index" json:"email" validate:"required,email"`
+        Password    string `gorm:"type:varchar(255);not null" json:"-" validate:"required,min=6"`
+        FirstName   string `gorm:"type:varchar(100)" json:"first_name" validate:"required,min=1,max=100"`
+        LastName    string `gorm:"type:varchar(100)" json:"last_name" validate:"required,min=1,max=100"`
+        DisplayName string `gorm:"type:varchar(255)" json:"display_name"`
+        Avatar      string `gorm:"type:varchar(500)" json:"avatar"`
+        Phone       string `gorm:"type:varchar(50)" json:"phone"`
+
+        // Status
+        IsActive        bool       `gorm:"default:true" json:"is_active"`
+        EmailVerified   bool       `gorm:"default:false" json:"email_verified"`
+        EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
+
+        // Authentication
+        LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
+        LastLoginIP    string     `gorm:"type:varchar(45)" json:"last_login_ip,omitempty"`
+        FailedAttempts int        `gorm:"default:0" json:"-"`
+        LockedUntil    *time.Time `json:"-"`
+
+        // Profile
+        Timezone    string `gorm:"type:varchar(50);default:'UTC'" json:"timezone"`
+        Language    string `gorm:"type:varchar(10);default:'en'" json:"language"`
+        Preferences JSON   `gorm:"type:jsonb;default:'{}'" json:"preferences"`
+
+        // Relations
+        Tenants []Tenant `gorm:"many2many:tenant_users;" json:"tenants,omitempty"`
+}
+
+// TableName specifies the table name for User
+func (User) TableName() string <span class="cov8" title="1">{
+        return "users"
+}</span>
+
+// BeforeCreate hook to hash password and set display name
+func (u *User) BeforeCreate(tx *gorm.DB) error <span class="cov8" title="1">{
+        // Call parent BeforeCreate
+        if err := u.BaseModel.BeforeCreate(tx); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Hash password if it's not already hashed
+        <span class="cov8" title="1">if u.Password != "" &amp;&amp; !strings.HasPrefix(u.Password, "$2a$") </span><span class="cov8" title="1">{
+                if err := u.HashPassword(); err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
+
+        // Set display name if not provided
+        <span class="cov8" title="1">if u.DisplayName == "" </span><span class="cov8" title="1">{
+                u.DisplayName = u.FirstName + " " + u.LastName
+        }</span>
+
+        // Normalize email
+        <span class="cov8" title="1">u.Email = strings.ToLower(strings.TrimSpace(u.Email))
+
+        return nil</span>
+}
+
+// BeforeUpdate hook
+func (u *User) BeforeUpdate(tx *gorm.DB) error <span class="cov8" title="1">{
+        // Update display name if names changed
+        if u.DisplayName == "" </span><span class="cov0" title="0">{
+                u.DisplayName = u.FirstName + " " + u.LastName
+        }</span>
+
+        // Normalize email
+        <span class="cov8" title="1">u.Email = strings.ToLower(strings.TrimSpace(u.Email))
+
+        return nil</span>
+}
+
+// HashPassword hashes the user password
+func (u *User) HashPassword() error <span class="cov8" title="1">{
+        hashedPassword, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">u.Password = string(hashedPassword)
+        return nil</span>
+}
+
+// CheckPassword checks if provided password matches
+func (u *User) CheckPassword(password string) bool <span class="cov8" title="1">{
+        err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
+        return err == nil
+}</span>
+
+// GetFullName returns the user's full name
+func (u *User) GetFullName() string <span class="cov0" title="0">{
+        return u.FirstName + " " + u.LastName
+}</span>
+
+// IsLocked checks if the user account is locked
+func (u *User) IsLocked() bool <span class="cov8" title="1">{
+        if u.LockedUntil == nil </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">return u.LockedUntil.After(time.Now())</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package database
+
+import (
+        "context"
+        "fmt"
+        "log"
+        "time"
+
+        "gorm.io/driver/postgres"
+        "gorm.io/gorm"
+        "gorm.io/gorm/logger"
+
+        "workbench/internal/config"
+        "workbench/internal/core/models"
+)
+
+var (
+        DB *gorm.DB
+)
+
+// Initialize creates database connection and runs migrations
+func Initialize(cfg *config.DatabaseConfig) (*gorm.DB, error) <span class="cov8" title="1">{
+        var err error
+
+        // Configure GORM
+        gormConfig := &amp;gorm.Config{
+                // Set log mode based on environment
+                Logger: logger.Default.LogMode(logger.Info),
+                // Disable foreign key constraint when migrating
+                DisableForeignKeyConstraintWhenMigrating: false,
+                // Use singular table names
+                NamingStrategy: nil,
+                // Current time function
+                NowFunc: func() time.Time </span><span class="cov8" title="1">{
+                        return time.Now().UTC()
+                }</span>,
+        }
+
+        // Open database connection
+        <span class="cov8" title="1">DB, err = gorm.Open(postgres.Open(cfg.GetDSN()), gormConfig)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to connect to database: %w", err)
+        }</span>
+
+        // Get underlying SQL database
+        <span class="cov8" title="1">sqlDB, err := DB.DB()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to get database instance: %w", err)
+        }</span>
+
+        // Configure connection pool
+        <span class="cov8" title="1">sqlDB.SetMaxOpenConns(cfg.MaxOpenConns)
+        sqlDB.SetMaxIdleConns(cfg.MaxIdleConns)
+        sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+
+        // Test connection
+        if err := sqlDB.Ping(); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to ping database: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">log.Println("✅ Database connection established")
+
+        // Run migrations
+        if err := Migrate(DB); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to run migrations: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">return DB, nil</span>
+}
+
+// Migrate runs database migrations
+func Migrate(db *gorm.DB) error <span class="cov8" title="1">{
+        log.Println("Running database migrations...")
+
+        // Create UUID extension
+        db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+
+        // Auto migrate models
+        err := db.AutoMigrate(
+                &amp;models.Tenant{},
+                &amp;models.User{},
+                &amp;models.TenantUser{},
+        )
+
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("migration failed: %w", err)
+        }</span>
+
+        <span class="cov8" title="1">log.Println("✅ Database migrations completed")
+        return nil</span>
+}
+
+// GetDB returns the database instance
+func GetDB() *gorm.DB <span class="cov0" title="0">{
+        return DB
+}</span>
+
+// Close closes the database connection
+func Close() error <span class="cov0" title="0">{
+        if DB != nil </span><span class="cov0" title="0">{
+                sqlDB, err := DB.DB()
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov0" title="0">return sqlDB.Close()</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+
+// HealthCheck checks if database is accessible
+func HealthCheck() error <span class="cov0" title="0">{
+        if DB == nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("database not initialized")
+        }</span>
+
+        <span class="cov0" title="0">sqlDB, err := DB.DB()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+        defer cancel()
+
+        return sqlDB.PingContext(ctx)</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package database
+
+import (
+        "fmt"
+        "log"
+        "workbench/internal/core/models"
+
+        "gorm.io/gorm"
+)
+
+// Seed populates the database with initial data
+func Seed(db *gorm.DB) error <span class="cov0" title="0">{
+        log.Println("Seeding database...")
+
+        // Create sample tenants
+        tenants := []models.Tenant{
+                {
+                        Name:        "Acme Corporation",
+                        Subdomain:   "acme",
+                        Description: "A sample technology company",
+                        Plan:        "premium",
+                        MaxUsers:    50,
+                        Settings:    models.JSON{"theme": "dark", "language": "en"},
+                },
+                {
+                        Name:        "StartUp Inc",
+                        Subdomain:   "startup",
+                        Description: "A growing startup",
+                        Plan:        "free",
+                        MaxUsers:    5,
+                        Settings:    models.JSON{"theme": "light", "language": "en"},
+                },
+        }
+
+        for _, tenant := range tenants </span><span class="cov0" title="0">{
+                var existing models.Tenant
+                if err := db.Where("subdomain = ?", tenant.Subdomain).First(&amp;existing).Error; err == gorm.ErrRecordNotFound </span><span class="cov0" title="0">{
+                        if err := db.Create(&amp;tenant).Error; err != nil </span><span class="cov0" title="0">{
+                                log.Printf("Failed to create tenant %s: %v", tenant.Name, err)
+                        }</span> else<span class="cov0" title="0"> {
+                                log.Printf("Created tenant: %s", tenant.Name)
+                        }</span>
+                }
+        }
+
+        // Create sample users
+        <span class="cov0" title="0">users := []models.User{
+                {
+                        Email:         "admin@acme.com",
+                        Password:      "admin123",
+                        FirstName:     "Admin",
+                        LastName:      "User",
+                        IsActive:      true,
+                        EmailVerified: true,
+                },
+                {
+                        Email:     "john@startup.com",
+                        Password:  "john123",
+                        FirstName: "John",
+                        LastName:  "Doe",
+                        IsActive:  true,
+                },
+        }
+
+        for _, user := range users </span><span class="cov0" title="0">{
+                var existing models.User
+                if err := db.Where("email = ?", user.Email).First(&amp;existing).Error; err == gorm.ErrRecordNotFound </span><span class="cov0" title="0">{
+                        if err := db.Create(&amp;user).Error; err != nil </span><span class="cov0" title="0">{
+                                log.Printf("Failed to create user %s: %v", user.Email, err)
+                        }</span> else<span class="cov0" title="0"> {
+                                log.Printf("Created user: %s", user.Email)
+                        }</span>
+                }
+        }
+
+        <span class="cov0" title="0">log.Println("✅ Database seeding completed")
+        return nil</span>
+}
+
+// Reset drops all tables and recreates them
+func Reset(db *gorm.DB) error <span class="cov0" title="0">{
+        log.Println("Resetting database...")
+
+        // Drop all tables
+        err := db.Migrator().DropTable(
+                &amp;models.TenantUser{},
+                &amp;models.User{},
+                &amp;models.Tenant{},
+        )
+
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to drop tables: %w", err)
+        }</span>
+
+        // Recreate tables
+        <span class="cov0" title="0">if err := Migrate(db); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to recreate tables: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">log.Println("✅ Database reset completed")
+        return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package database
+
+import (
+        "fmt"
+        "workbench/internal/core/models"
+
+        "gorm.io/gorm"
+)
+
+// Paginate returns a function that paginates the query
+func Paginate(pagination *models.Pagination) func(db *gorm.DB) *gorm.DB <span class="cov0" title="0">{
+        return func(db *gorm.DB) *gorm.DB </span><span class="cov0" title="0">{
+                // page := pagination.GetPage()
+                limit := pagination.GetLimit()
+                offset := pagination.GetOffset()
+
+                return db.Offset(offset).Limit(limit)
+        }</span>
+}
+
+// OrderBy returns a function that orders the query
+func OrderBy(sort string) func(db *gorm.DB) *gorm.DB <span class="cov0" title="0">{
+        return func(db *gorm.DB) *gorm.DB </span><span class="cov0" title="0">{
+                if sort != "" </span><span class="cov0" title="0">{
+                        return db.Order(sort)
+                }</span>
+                <span class="cov0" title="0">return db.Order("created_at DESC")</span>
+        }
+}
+
+// FilterByTenant returns a function that filters by tenant
+func FilterByTenant(tenantID string) func(db *gorm.DB) *gorm.DB <span class="cov0" title="0">{
+        return func(db *gorm.DB) *gorm.DB </span><span class="cov0" title="0">{
+                if tenantID != "" </span><span class="cov0" title="0">{
+                        return db.Where("tenant_id = ?", tenantID)
+                }</span>
+                <span class="cov0" title="0">return db</span>
+        }
+}
+
+// Search returns a function that searches in specified fields
+func Search(query string, fields ...string) func(db *gorm.DB) *gorm.DB <span class="cov0" title="0">{
+        return func(db *gorm.DB) *gorm.DB </span><span class="cov0" title="0">{
+                if query == "" || len(fields) == 0 </span><span class="cov0" title="0">{
+                        return db
+                }</span>
+
+                <span class="cov0" title="0">condition := ""
+                values := []interface{}{}
+
+                for i, field := range fields </span><span class="cov0" title="0">{
+                        if i &gt; 0 </span><span class="cov0" title="0">{
+                                condition += " OR "
+                        }</span>
+                        <span class="cov0" title="0">condition += fmt.Sprintf("%s ILIKE ?", field)
+                        values = append(values, "%"+query+"%")</span>
+                }
+
+                <span class="cov0" title="0">return db.Where(condition, values...)</span>
+        }
+}
+
+// IsActive returns a function that filters only active records
+func IsActive() func(db *gorm.DB) *gorm.DB <span class="cov0" title="0">{
+        return func(db *gorm.DB) *gorm.DB </span><span class="cov0" title="0">{
+                return db.Where("is_active = ?", true)
+        }</span>
+}
+
+// WithDeleted includes soft deleted records
+func WithDeleted() func(db *gorm.DB) *gorm.DB <span class="cov0" title="0">{
+        return func(db *gorm.DB) *gorm.DB </span><span class="cov0" title="0">{
+                return db.Unscoped()
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package testutils
+
+import (
+    "os"
+    "testing"
+    "time"
+    
+    "github.com/joho/godotenv"
+    "workbench/internal/config"
+)
+
+// LoadTestConfig loads test configuration
+func LoadTestConfig(t *testing.T) *config.Config <span class="cov0" title="0">{
+    // Load test environment variables if available
+    _ = godotenv.Load("../../.env.test")
+    
+    // Override with test values
+    os.Setenv("APP_ENV", "test")
+    os.Setenv("DB_NAME", "workbench_test")
+    os.Setenv("JWT_SECRET", "test-secret-key-for-testing-only")
+    
+    cfg, err := config.Load()
+    if err != nil </span><span class="cov0" title="0">{
+        t.Fatalf("Failed to load test config: %v", err)
+    }</span>
+    
+    <span class="cov0" title="0">return cfg</span>
+}
+
+// GetTestJWTSecret returns a test JWT secret
+func GetTestJWTSecret() string <span class="cov0" title="0">{
+    return "test-secret-key-for-testing-only"
+}</span>
+
+// GetTestTimeout returns a standard test timeout
+func GetTestTimeout() time.Duration <span class="cov0" title="0">{
+    return 30 * time.Second
+}</span>
+</pre>
+		
+		<pre class="file" id="file12" style="display: none">package testutils
+
+import (
+    "fmt"
+    "testing"
+    
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
+    "gorm.io/gorm/logger"
+    "workbench/internal/core/models"
+)
+
+// SetupTestDB creates a test database connection
+func SetupTestDB(t *testing.T) *gorm.DB <span class="cov0" title="0">{
+    cfg := LoadTestConfig(t)
+    
+    dsn := fmt.Sprintf(
+        "host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+        cfg.Database.Host,
+        cfg.Database.Port,
+        cfg.Database.User,
+        cfg.Database.Password,
+        cfg.Database.Name,
+        cfg.Database.SSLMode,
+    )
+    
+    db, err := gorm.Open(postgres.Open(dsn), &amp;gorm.Config{
+        Logger: logger.Default.LogMode(logger.Silent),
+    })
+    
+    if err != nil </span><span class="cov0" title="0">{
+        t.Fatalf("Failed to connect to test database: %v", err)
+    }</span>
+    
+    // Run migrations
+    <span class="cov0" title="0">MigrateTestDB(t, db)
+    
+    return db</span>
+}
+
+// MigrateTestDB runs migrations for test database
+func MigrateTestDB(t *testing.T, db *gorm.DB) <span class="cov0" title="0">{
+    err := db.AutoMigrate(
+        &amp;models.Tenant{},
+        &amp;models.User{},
+        &amp;models.TenantUser{},
+    )
+    
+    if err != nil </span><span class="cov0" title="0">{
+        t.Fatalf("Failed to migrate test database: %v", err)
+    }</span>
+}
+
+// CleanupTestDB cleans up test data
+func CleanupTestDB(t *testing.T, db *gorm.DB) <span class="cov0" title="0">{
+    // Clean in correct order to respect foreign keys
+    tables := []string{
+        "tenant_users",
+        "users",
+        "tenants",
+    }
+    
+    for _, table := range tables </span><span class="cov0" title="0">{
+        if err := db.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table)).Error; err != nil </span><span class="cov0" title="0">{
+            t.Logf("Warning: Failed to truncate %s: %v", table, err)
+        }</span>
+    }
+}
+
+// CreateTestUser creates a test user with tenant
+func CreateTestUser(t *testing.T, db *gorm.DB) (*models.User, *models.Tenant, string) <span class="cov0" title="0">{
+    tenant := &amp;models.Tenant{
+        Name:      "Test Tenant",
+        Subdomain: "test-tenant",
+        Plan:      "free",
+        IsActive:  true,
+    }
+    
+    if err := db.Create(tenant).Error; err != nil </span><span class="cov0" title="0">{
+        t.Fatalf("Failed to create test tenant: %v", err)
+    }</span>
+    
+    <span class="cov0" title="0">user := &amp;models.User{
+        Email:         "test@example.com",
+        Password:      "password123",
+        FirstName:     "Test",
+        LastName:      "User",
+        IsActive:      true,
+        EmailVerified: true,
+    }
+    
+    if err := db.Create(user).Error; err != nil </span><span class="cov0" title="0">{
+        t.Fatalf("Failed to create test user: %v", err)
+    }</span>
+    
+    <span class="cov0" title="0">tenantUser := &amp;models.TenantUser{
+        TenantID: tenant.ID,
+        UserID:   user.ID,
+        Role:     "admin",
+        IsActive: true,
+    }
+    
+    if err := db.Create(tenantUser).Error; err != nil </span><span class="cov0" title="0">{
+        t.Fatalf("Failed to create tenant user: %v", err)
+    }</span>
+    
+    <span class="cov0" title="0">return user, tenant, "password123"</span>
+}
+</pre>
+		
+		<pre class="file" id="file13" style="display: none">package testutils
+
+import (
+        "testing"
+        "time"
+
+        "github.com/google/uuid"
+        "github.com/labstack/echo/v4"
+        "github.com/labstack/echo/v4/middleware"
+        "gorm.io/gorm"
+
+        "workbench/internal/auth"
+        "workbench/internal/core/handlers"
+        customMiddleware "workbench/pkg/middleware"
+)
+
+// TestServer holds test server dependencies
+type TestServer struct {
+        Echo        *echo.Echo
+        DB          *gorm.DB
+        JWTManager  *auth.JWTManager
+        AuthService *auth.Service
+        AuthHandler *handlers.AuthHandler
+}
+
+// SetupTestServer creates a test server
+func SetupTestServer(t *testing.T) *TestServer <span class="cov0" title="0">{
+        // Setup database
+        db := SetupTestDB(t)
+
+        // Setup Echo
+        e := echo.New()
+        e.Use(middleware.Logger())
+        e.Use(middleware.Recover())
+
+        // Setup JWT Manager
+        jwtManager := auth.NewJWTManager(
+                GetTestJWTSecret(),
+                24*time.Hour,
+        )
+
+        // Setup services
+        authService := auth.NewService(db, jwtManager)
+
+        // Setup handlers
+        authHandler := handlers.NewAuthHandler(authService)
+
+        // Setup routes
+        api := e.Group("/api/v1")
+
+        // Public routes
+        api.POST("/auth/register", authHandler.Register)
+        api.POST("/auth/login", authHandler.Login)
+
+        // Protected routes
+        protected := api.Group("")
+        protected.Use(customMiddleware.JWTMiddleware(customMiddleware.JWTConfig{
+                JWTManager: jwtManager,
+        }))
+
+        protected.GET("/auth/me", authHandler.Me)
+        protected.POST("/auth/refresh", authHandler.Refresh)
+        protected.GET("/test", func(c echo.Context) error </span><span class="cov0" title="0">{
+                claims := c.Get("claims").(*auth.JWTClaims)
+                return c.JSON(200, map[string]interface{}{
+                        "message": "This is a protected route",
+                        "user_id": claims.UserID,
+                        "email":   claims.Email,
+                        "role":    claims.Role,
+                })
+        }</span>)
+
+        <span class="cov0" title="0">return &amp;TestServer{
+                Echo:        e,
+                DB:          db,
+                JWTManager:  jwtManager,
+                AuthService: authService,
+                AuthHandler: authHandler,
+        }</span>
+}
+
+// Cleanup cleans up test server resources
+func (ts *TestServer) Cleanup(t *testing.T) <span class="cov0" title="0">{
+        CleanupTestDB(t, ts.DB)
+
+        sqlDB, err := ts.DB.DB()
+        if err == nil </span><span class="cov0" title="0">{
+                sqlDB.Close()
+        }</span>
+}
+
+// GenerateTestToken generates a test JWT token
+func (ts *TestServer) GenerateTestToken(userID, tenantID string, email, role string) (string, error) <span class="cov0" title="0">{
+        uid, _ := uuid.Parse(userID)
+        tid, _ := uuid.Parse(tenantID)
+        return ts.JWTManager.GenerateToken(uid, tid, email, role)
+}</span>
+</pre>
+		
+		<pre class="file" id="file14" style="display: none">package middleware
+
+import (
+    "net/http"
+    "strings"
+    
+    "github.com/labstack/echo/v4"
+    "workbench/internal/auth"
+)
+
+// JWTConfig holds JWT middleware configuration
+type JWTConfig struct {
+    JWTManager *auth.JWTManager
+    Skipper    func(c echo.Context) bool
+}
+
+// JWTMiddleware creates a JWT middleware
+func JWTMiddleware(config JWTConfig) echo.MiddlewareFunc <span class="cov8" title="1">{
+    return func(next echo.HandlerFunc) echo.HandlerFunc </span><span class="cov8" title="1">{
+        return func(c echo.Context) error </span><span class="cov8" title="1">{
+            // Skip if skipper returns true
+            if config.Skipper != nil &amp;&amp; config.Skipper(c) </span><span class="cov0" title="0">{
+                return next(c)
+            }</span>
+            
+            // Get token from Authorization header
+            <span class="cov8" title="1">authHeader := c.Request().Header.Get("Authorization")
+            if authHeader == "" </span><span class="cov8" title="1">{
+                return echo.NewHTTPError(http.StatusUnauthorized, "Missing authorization header")
+            }</span>
+            
+            // Check if it starts with "Bearer "
+            <span class="cov8" title="1">if !strings.HasPrefix(authHeader, "Bearer ") </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusUnauthorized, "Invalid authorization header format")
+            }</span>
+            
+            // Extract token
+            <span class="cov8" title="1">tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+            
+            // Validate token
+            claims, err := config.JWTManager.ValidateToken(tokenString)
+            if err != nil </span><span class="cov8" title="1">{
+                if err == auth.ErrExpiredToken </span><span class="cov0" title="0">{
+                    return echo.NewHTTPError(http.StatusUnauthorized, "Token has expired")
+                }</span>
+                <span class="cov8" title="1">return echo.NewHTTPError(http.StatusUnauthorized, "Invalid token")</span>
+            }
+            
+            // Set claims in context
+            <span class="cov8" title="1">c.Set("claims", claims)
+            c.Set("user_id", claims.UserID.String())
+            c.Set("tenant_id", claims.TenantID.String())
+            c.Set("email", claims.Email)
+            c.Set("role", claims.Role)
+            
+            return next(c)</span>
+        }
+    }
+}
+
+// RequireRole creates a middleware that requires specific roles
+func RequireRole(roles ...string) echo.MiddlewareFunc <span class="cov0" title="0">{
+    return func(next echo.HandlerFunc) echo.HandlerFunc </span><span class="cov0" title="0">{
+        return func(c echo.Context) error </span><span class="cov0" title="0">{
+            // Get role from context
+            userRole := c.Get("role")
+            if userRole == nil </span><span class="cov0" title="0">{
+                return echo.NewHTTPError(http.StatusForbidden, "No role found")
+            }</span>
+            
+            // Check if user has required role
+            <span class="cov0" title="0">for _, role := range roles </span><span class="cov0" title="0">{
+                if userRole.(string) == role </span><span class="cov0" title="0">{
+                    return next(c)
+                }</span>
+            }
+            
+            <span class="cov0" title="0">return echo.NewHTTPError(http.StatusForbidden, "Insufficient permissions")</span>
+        }
+    }
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
