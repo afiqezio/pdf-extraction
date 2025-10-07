@@ -89,6 +89,14 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
+	// Verify tables were created
+	var tableCount int64
+	err = db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'").Scan(&tableCount).Error
+	if err != nil {
+		return fmt.Errorf("failed to count tables: %w", err)
+	}
+	log.Printf("🔍 Tables created: %d", tableCount)
+
 	log.Println("✅ Database migrations completed")
 	return nil
 }

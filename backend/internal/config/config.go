@@ -58,8 +58,11 @@ type ServerConfig struct {
 // Load loads configuration from environment variables
 func Load() (*Config, error) {
 	// Load .env file if it exists
-	if err := godotenv.Load("../.env"); err != nil {
-		log.Printf("Warning: .env file not found: %v", err)
+	if err := godotenv.Load(".env"); err != nil {
+		// Try parent directory if .env not found in current directory
+		if err := godotenv.Load("../.env"); err != nil {
+			log.Printf("Warning: .env file not found in current or parent directory: %v", err)
+		}
 	}
 
 	config := &Config{
@@ -89,11 +92,15 @@ func Load() (*Config, error) {
 	}
 
 	// Debug: Print the actual database configuration being used
-	log.Printf("🔍 Database Config: Host=%s, Port=%d, User=%s, Name=%s",
+	log.Printf("🔍 Database Config: Host=%s, Port=%d, User=%s, Name=%s, Password=%s, SSLMode=%s",
 		config.Database.Host,
 		config.Database.Port,
 		config.Database.User,
-		config.Database.Name)
+		config.Database.Name,
+		config.Database.Password,
+		config.Database.SSLMode)
+
+	log.Printf("🔍 Database DSN: %s", config.Database.GetDSN())
 
 	return config, nil
 }
@@ -101,8 +108,8 @@ func Load() (*Config, error) {
 // GetDSN returns PostgreSQL connection string
 func (c *DatabaseConfig) GetDSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.Host, c.Port, c.User, c.Password, c.Name, c.SSLMode,
+		"postgresql://%s:%s@%s:%d/%s?sslmode=%s",
+		c.User, c.Password, c.Host, c.Port, c.Name, c.SSLMode,
 	)
 }
 
