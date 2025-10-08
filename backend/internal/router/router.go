@@ -35,11 +35,13 @@ func Setup() *echo.Echo {
 	userHandler := handlers.NewUserHandler(getDB)
 	petrographyClasticHandler := handlers.NewPetrographyClasticHandler(getDB)
 	petrographyCarbonateHandler := handlers.NewPetrographyCarbonateHandler(getDB)
+	extractionHandler := handlers.NewExtractionHandler(getDB)
 
 	// Add Routes here
 	userHandler.UserRoutes(api)
 	petrographyClasticHandler.PetrographyClasticRoutes(api)
 	petrographyCarbonateHandler.PetrographyCarbonateRoutes(api)
+	extractionHandler.ExtractionRoutes(api)
 
 	return e
 }

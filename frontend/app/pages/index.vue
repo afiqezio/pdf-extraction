@@ -419,38 +419,86 @@ const uploadAndExtract = async () => {
   extractionResult.value = null
 
   try {
-    // Simulate API call - replace with actual API endpoint
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // Create FormData for file upload
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+
+    console.log("calling process pdf");
+    // Call the real API endpoint
+    const response = await fetch('http://localhost:8081/api/v1/extraction/process-pdf', {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Extraction failed')
+    }
+
+    const data = await response.json()
+
+    console.log("response data", data);
     
-    // Mock extraction result
-    extractionResult.value = {
-      summary: {
-        records: 150,
-        fields: 8
-      },
-      preview: {
-        fields: ['ID', 'Name', 'Email', 'Department', 'Salary', 'Start Date', 'Status', 'Location'],
-        rows: [
-          ['1', 'John Doe', 'john@example.com', 'Engineering', '$75,000', '2023-01-15', 'Active', 'New York'],
-          ['2', 'Jane Smith', 'jane@example.com', 'Marketing', '$65,000', '2023-02-20', 'Active', 'Los Angeles'],
-          ['3', 'Bob Johnson', 'bob@example.com', 'Sales', '$70,000', '2023-03-10', 'Active', 'Chicago']
-        ]
-      },
-      analysis: [
-        { name: 'ID', type: 'Integer', nullCount: 0 },
-        { name: 'Name', type: 'String', nullCount: 0 },
-        { name: 'Email', type: 'Email', nullCount: 0 },
-        { name: 'Department', type: 'String', nullCount: 2 },
-        { name: 'Salary', type: 'Currency', nullCount: 1 },
-        { name: 'Start Date', type: 'Date', nullCount: 0 },
-        { name: 'Status', type: 'String', nullCount: 0 },
-        { name: 'Location', type: 'String', nullCount: 3 }
-      ],
-      warnings: [
-        'Some salary values are missing',
-        'Department field has 2 null values',
-        'Location field has 3 null values'
-      ]
+    // Process the real extraction results
+    const markdownFiles = data.results.markdown_files || []
+    const firstFile = markdownFiles[0]
+    
+    if (firstFile && firstFile.content) {
+      // Parse the markdown content to extract table information
+      const content = firstFile.content
+      const tableMatches = content.match(/### Table \d+/g) || []
+      const tableCount = tableMatches.length
+      
+      // Extract sample data from the first table
+      const tableStart = content.indexOf('|')
+      const tableEnd = content.indexOf('---', tableStart)
+      const tableContent = content.substring(tableStart, tableEnd)
+      const tableLines = tableContent.split('\n').filter(line => line.includes('|'))
+      
+      // Parse table headers and first few rows
+      const headers = tableLines[0]?.split('|').map(h => h.trim()).filter(h => h) || []
+      const rows = tableLines.slice(1, 4).map(line => 
+        line.split('|').map(cell => cell.trim()).filter(cell => cell)
+      ).filter(row => row.length > 0)
+
+      extractionResult.value = {
+        summary: {
+          records: tableCount,
+          fields: headers.length,
+          tables: tableCount
+        },
+        preview: {
+          fields: headers,
+          rows: rows
+        },
+        analysis: headers.map(header => ({
+          name: header,
+          type: 'String',
+          nullCount: 0
+        })),
+        warnings: [],
+        extractionOutput: data.results.extraction_output,
+        filename: data.filename,
+        processedAt: data.processed_at
+      }
+    } else {
+      // Fallback if no tables found
+      extractionResult.value = {
+        summary: {
+          records: 0,
+          fields: 0,
+          tables: 0
+        },
+        preview: {
+          fields: [],
+          rows: []
+        },
+        analysis: [],
+        warnings: ['No tables found in the PDF'],
+        extractionOutput: data.results.extraction_output,
+        filename: data.filename,
+        processedAt: data.processed_at
+      }
     }
 
     // Add to recent extractions
@@ -458,14 +506,14 @@ const uploadAndExtract = async () => {
       id: Date.now(),
       fileName: selectedFile.value.name,
       fileType: selectedFile.value.type,
-      records: 150,
+      records: extractionResult.value.summary.records,
       status: 'Completed',
       createdAt: new Date()
     })
 
   } catch (error) {
     console.error('Extraction failed:', error)
-    alert('Extraction failed. Please try again.')
+    alert(`Extraction failed: ${error.message}`)
   } finally {
     isUploading.value = false
   }
