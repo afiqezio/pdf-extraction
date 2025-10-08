@@ -163,7 +163,7 @@
           <!-- Results Content -->
           <div v-else class="space-y-4">
             <!-- Summary Stats -->
-            <div class="grid grid-cols-2 gap-4">
+            <!-- <div class="grid grid-cols-2 gap-4">
               <div class="bg-blue-50 p-4 rounded-lg">
                 <div class="flex items-center">
                   <Icon name="heroicons:table-cells" class="h-6 w-6 text-blue-600" />
@@ -182,7 +182,7 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </div> -->
 
             <!-- Data Preview -->
             <div>
@@ -190,14 +190,24 @@
               <div class="border border-gray-200 rounded-lg overflow-hidden">
                 <div class="overflow-x-auto">
                   <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <!-- Hidden header row for column delete buttons -->
+                    <thead class="bg-transparent">
                       <tr>
+                        <th class="px-3 py-2 h-10 w-12">
+                          <!-- Empty header for delete row column -->
+                        </th>
                         <th
-                          v-for="field in extractionResult.preview.fields"
-                          :key="field"
-                          class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          v-for="(field, columnIndex) in extractionResult.preview.fields"
+                          :key="columnIndex"
+                          class="px-3 py-2 h-10"
                         >
-                          {{ field }}
+                          <button
+                            @click="deleteColumn(columnIndex)"
+                            class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center mx-auto"
+                            :title="`Delete column ${columnIndex + 1}`"
+                          >
+                            <Icon name="heroicons:x-mark" class="h-3 w-3" />
+                          </button>
                         </th>
                       </tr>
                     </thead>
@@ -207,6 +217,17 @@
                         :key="index"
                         class="hover:bg-gray-50"
                       >
+                        <!-- Delete row button column -->
+                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900 w-12">
+                          <button
+                            @click="deleteRow(index)"
+                            class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
+                            :title="`Delete row ${index + 1}`"
+                          >
+                            <Icon name="heroicons:trash" class="h-3 w-3" />
+                          </button>
+                        </td>
+                        <!-- Data columns -->
                         <td
                           v-for="(value, fieldIndex) in row"
                           :key="fieldIndex"
@@ -268,7 +289,7 @@
     </div>
 
     <!-- Recent Extractions -->
-    <div v-if="recentExtractions.length > 0" class="mt-8">
+    <!-- <div v-if="recentExtractions.length > 0" class="mt-8">
       <div class="bg-white shadow rounded-lg">
         <div class="px-4 py-5 sm:p-6">
           <h3 class="text-lg font-medium text-gray-900 mb-4">Recent Extractions</h3>
@@ -310,7 +331,7 @@
           </div>
         </div>
       </div>
-    </div>
+    </div> -->
   </div>
 </template>
 
@@ -420,7 +441,7 @@ const uploadAndExtract = async () => {
 
   try {
     // Simulate API call - replace with actual API endpoint
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await new Promise(resolve => setTimeout(resolve, 200))
     
     // Mock extraction result
     extractionResult.value = {
@@ -471,11 +492,6 @@ const uploadAndExtract = async () => {
   }
 }
 
-const viewExtraction = (id) => {
-  // TODO: Navigate to specific extraction view
-  console.log('View extraction:', id)
-}
-
 // Utility functions
 const getFileIcon = (fileType) => {
   if (fileType.includes('csv') || fileType.includes('excel')) return 'heroicons:table-cells'
@@ -493,34 +509,27 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const formatDate = (date) => {
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+const deleteRow = (rowIndex) => {
+  if (confirm('Are you sure you want to delete this row?')) {
+    extractionResult.value.preview.rows.splice(rowIndex, 1)
+    // Update summary
+    extractionResult.value.summary.records = extractionResult.value.preview.rows.length
+  }
 }
 
-const getFieldTypeBadgeClass = (type) => {
-  const classes = {
-    'Integer': 'bg-blue-100 text-blue-800',
-    'String': 'bg-green-100 text-green-800',
-    'Email': 'bg-purple-100 text-purple-800',
-    'Currency': 'bg-yellow-100 text-yellow-800',
-    'Date': 'bg-indigo-100 text-indigo-800'
+const deleteColumn = (columnIndex) => {
+  if (confirm('Are you sure you want to delete this column?')) {
+    // Remove the field from fields array
+    extractionResult.value.preview.fields.splice(columnIndex, 1)
+    
+    // Remove the corresponding data from each row
+    extractionResult.value.preview.rows.forEach(row => {
+      row.splice(columnIndex, 1)
+    })
+    
+    // Update summary
+    extractionResult.value.summary.fields = extractionResult.value.preview.fields.length
   }
-  return classes[type] || 'bg-gray-100 text-gray-800'
-}
-
-const getStatusBadgeClass = (status) => {
-  const classes = {
-    'Completed': 'bg-green-100 text-green-800',
-    'Processing': 'bg-yellow-100 text-yellow-800',
-    'Failed': 'bg-red-100 text-red-800'
-  }
-  return classes[status] || 'bg-gray-100 text-gray-800'
 }
 
 // Lifecycle
