@@ -270,6 +270,74 @@ def format_table_as_markdown(table_data: List[List[str]]) -> str:
     
     return "\n".join([header, separator] + rows)
 
+def save_json_tables(tables: List[Dict[str, Any]], pdf_name: str, pdf_path: Path):
+    """Save tables as JSON for frontend consumption"""
+    try:
+        # Get file stats
+        file_size = pdf_path.stat().st_size
+        extraction_date = datetime.now().isoformat()
+        
+        # Process tables for frontend
+        processed_tables = []
+        for i, table in enumerate(tables):
+            table_data = table['data']
+            if not table_data or len(table_data) < 2:
+                continue
+                
+            # Extract headers (first row) and data rows
+            headers = table_data[0] if table_data else []
+            rows = table_data[1:] if len(table_data) > 1 else []
+            
+            # Clean headers and rows
+            clean_headers = [str(h).strip() for h in headers if str(h).strip()]
+            clean_rows = []
+            for row in rows:
+                clean_row = [str(cell).strip() for cell in row if str(cell).strip()]
+                if clean_row:  # Only add non-empty rows
+                    clean_rows.append(clean_row)
+            
+            processed_table = {
+                "id": i + 1,
+                "page": table.get('page', 1),
+                "method": table.get('method', 'camelot_stream'),
+                "confidence": round(table.get('confidence', 0) * 100, 2),
+                "dimensions": f"{len(clean_rows)}x{len(clean_headers)}",
+                "headers": clean_headers,
+                "rows": clean_rows,
+                "metadata": {
+                    "extraction_method": table.get('method', 'camelot_stream'),
+                    "accuracy": table.get('metadata', {}).get('accuracy'),
+                    "whitespace": table.get('metadata', {}).get('whitespace'),
+                    "flavor": table.get('metadata', {}).get('flavor')
+                }
+            }
+            processed_tables.append(processed_table)
+        
+        # Create JSON structure for frontend
+        json_data = {
+            "filename": pdf_name,
+            "file_size": file_size,
+            "extraction_date": extraction_date,
+            "summary": {
+                "total_tables": len(processed_tables),
+                "total_records": sum(len(table['rows']) for table in processed_tables),
+                "total_fields": len(processed_tables[0]['headers']) if processed_tables else 0
+            },
+            "tables": processed_tables
+        }
+        
+        # Save JSON file
+        json_file = f"{OUTPUT_DIR}/markdown/{pdf_name}_extracted.json"
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(json_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"💾 Saved JSON data: {json_file}")
+        return json_data
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save JSON data: {e}")
+        return None
+
 def save_better_markdown(tables: List[Dict[str, Any]], pdf_name: str, pdf_path: Path):
     """Save tables as better formatted Markdown file"""
     try:
@@ -364,9 +432,10 @@ def main():
             logger.info(f"   📊 Total tables found: {len(tables)}")
             logger.info(f"   🎯 Quality unique tables: {len(unique_tables)}")
             
-            # Save as better markdown
+            # Save as better markdown and JSON
             pdf_name = pdf_path.stem
             save_better_markdown(unique_tables, pdf_name, pdf_path)
+            save_json_tables(unique_tables, pdf_name, pdf_path)
             
         except Exception as e:
             logger.error(f"❌ Failed to process {pdf_path.name}: {e}")
