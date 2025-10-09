@@ -459,38 +459,63 @@ const uploadAndExtract = async () => {
     const data = await response.json()
 
     console.log("response data", data);
-    
-    // Process the real extraction results
-    const markdownFiles = data.results.markdown_files || []
-    const firstFile = markdownFiles[0]
-    
-    if (firstFile && firstFile.content) {
-      // Parse the markdown content to extract table information
-      const content = firstFile.content
-      const tableMatches = content.match(/### Table \d+/g) || []
-      const tableCount = tableMatches.length
-      
-      // Extract sample data from the first table
-      const tableStart = content.indexOf('|')
-      const tableEnd = content.indexOf('---', tableStart)
-      const tableContent = content.substring(tableStart, tableEnd)
-      const tableLines = tableContent.split('\n').filter(line => line.includes('|'))
-      
-      // Parse table headers and first few rows
-      const headers = tableLines[0]?.split('|').map(h => h.trim()).filter(h => h) || []
-      const rows = tableLines.slice(1, 4).map(line => 
-        line.split('|').map(cell => cell.trim()).filter(cell => cell)
-      ).filter(row => row.length > 0)
+    console.log("results object:", data.results);
+    console.log("json_files:", data.results?.json_files);
+    console.log("files_count:", data.results?.files_count);
+
+    // --- Improved JSON files detection logic ---
+    let jsonFiles = []
+    // Defensive: check if data.results exists and is an object
+    if (data && data.results && typeof data.results === 'object') {
+      // Try to find json_files as array, or fallback to any array of objects with .data
+      if (Array.isArray(data.results.json_files)) {
+        jsonFiles = data.results.json_files
+        console.log("Found json_files as array:", jsonFiles.length, "files");
+      } else if (Array.isArray(data.results.files)) {
+        // Sometimes backend may use 'files' instead of 'json_files'
+        jsonFiles = data.results.files
+        console.log("Found files as array:", jsonFiles.length, "files");
+      } else if (typeof data.results.json_files === 'object' && data.results.json_files !== null) {
+        // Sometimes json_files is a dict of filename: {data: ...}
+        jsonFiles = Object.values(data.results.json_files)
+        console.log("Found json_files as object:", jsonFiles.length, "files");
+      } else {
+        console.log("No json_files found in results");
+      }
+    } else {
+      console.log("No results object found in response");
+    }
+
+    // Find the first file that has a .data property (robust to backend changes)
+    const firstFile = Array.isArray(jsonFiles)
+      ? jsonFiles.find(f => f && typeof f === 'object' && f.data)
+      : null
+
+    console.log("firstFile found:", firstFile);
+    console.log("firstFile.data:", firstFile?.data);
+
+    if (firstFile && firstFile.data) {
+      const jsonData = firstFile.data
+      const tables = Array.isArray(jsonData.tables) ? jsonData.tables : []
+      const summary = typeof jsonData.summary === 'object' && jsonData.summary !== null ? jsonData.summary : {}
+
+      // Get the first table for preview
+      const firstTable = tables[0] || {}
+      const headers = Array.isArray(firstTable.headers) ? firstTable.headers : []
+      const rows = Array.isArray(firstTable.rows) ? firstTable.rows : []
+
+      // Take first 3 rows for preview
+      const previewRows = rows.slice(0, 3)
 
       extractionResult.value = {
         summary: {
-          records: tableCount,
-          fields: headers.length,
-          tables: tableCount
+          records: summary.total_records || previewRows.length || 0,
+          fields: summary.total_fields || headers.length || 0,
+          tables: summary.total_tables || tables.length || 0
         },
         preview: {
           fields: headers,
-          rows: rows
+          rows: previewRows
         },
         analysis: headers.map(header => ({
           name: header,
@@ -500,10 +525,13 @@ const uploadAndExtract = async () => {
         warnings: [],
         extractionOutput: data.results.extraction_output,
         filename: data.filename,
-        processedAt: data.processed_at
+        processedAt: data.processed_at,
+        // Add the full JSON data for advanced features
+        rawData: jsonData
       }
     } else {
-      // Fallback if no tables found
+      // Fallback if no JSON files found - show a message to the user
+      console.log("No firstFile or firstFile.data found, using fallback");
       extractionResult.value = {
         summary: {
           records: 0,
@@ -515,8 +543,10 @@ const uploadAndExtract = async () => {
           rows: []
         },
         analysis: [],
-        warnings: ['No tables found in the PDF'],
-        extractionOutput: data.results.extraction_output,
+        warnings: [
+          'No valid JSON extraction data found. The PDF was processed but the backend did not return extractable data. Please check the backend logs and output structure.'
+        ],
+        extractionOutput: data.results && data.results.extraction_output,
         filename: data.filename,
         processedAt: data.processed_at
       }
