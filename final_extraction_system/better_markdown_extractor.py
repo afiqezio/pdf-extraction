@@ -159,14 +159,14 @@ class BetterCamelotExtractor:
             return None
     
     def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean dataframe with better logic"""
+        """Clean dataframe with better logic - PRESERVE empty cells for column alignment"""
         # Remove completely empty rows
         df = df.dropna(how='all')
         
         # Remove completely empty columns
         df = df.dropna(axis=1, how='all')
         
-        # Fill NaN values with empty strings
+        # Fill NaN values with empty strings to preserve column structure
         df = df.fillna('')
         
         # Remove rows where all values are empty strings
@@ -288,12 +288,14 @@ def save_json_tables(tables: List[Dict[str, Any]], pdf_name: str, pdf_path: Path
             headers = table_data[0] if table_data else []
             rows = table_data[1:] if len(table_data) > 1 else []
             
-            # Clean headers and rows
-            clean_headers = [str(h).strip() for h in headers if str(h).strip()]
+            # Clean headers and rows - PRESERVE empty cells to maintain column alignment
+            clean_headers = [str(h).strip() if str(h).strip() else "" for h in headers]
             clean_rows = []
             for row in rows:
-                clean_row = [str(cell).strip() for cell in row if str(cell).strip()]
-                if clean_row:  # Only add non-empty rows
+                # Preserve all cells (including empty ones) to maintain column structure
+                clean_row = [str(cell).strip() if str(cell).strip() else "" for cell in row]
+                # Only skip completely empty rows (all cells are empty)
+                if any(cell.strip() for cell in clean_row):
                     clean_rows.append(clean_row)
             
             processed_table = {

@@ -15,7 +15,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="grid grid-cols-1 gap-8 lg:grid-cols-2">
+    <div class="space-y-8">
       <!-- Upload Section -->
       <div class="bg-white shadow rounded-lg">
         <div class="px-4 py-5 sm:p-6">
@@ -184,60 +184,255 @@
               </div>
             </div> -->
 
-            <!-- Data Preview -->
-            <div>
-              <h4 class="text-sm font-medium text-gray-900 mb-3">Data Preview</h4>
-              <div class="border border-gray-200 rounded-lg overflow-hidden">
-                <div class="overflow-x-auto">
-                  <table class="min-w-full divide-y divide-gray-200">
-                    <!-- Hidden header row for column delete buttons -->
-                    <thead class="bg-transparent">
-                      <tr>
-                        <th class="px-3 py-2 h-10 w-12">
-                          <!-- Empty header for delete row column -->
-                        </th>
-                        <th
-                          v-for="(field, columnIndex) in extractionResult.preview.fields"
-                          :key="columnIndex"
-                          class="px-3 py-2 h-10"
-                        >
-                          <button
-                            @click="deleteColumn(columnIndex)"
-                            class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center mx-auto"
-                            :title="`Delete column ${columnIndex + 1}`"
+            <!-- Data Preview - All Tables -->
+            <div class="space-y-6">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-sm font-medium text-gray-900">Data Preview</h4>
+                <span class="text-xs text-gray-500">
+                  {{ extractionResult.allTables?.length || 0 }} table(s) found
+                </span>
+              </div>
+
+              <!-- Loop through all tables -->
+              <div
+                v-for="(table, tableIndex) in extractionResult.allTables"
+                :key="tableIndex"
+                class="border border-gray-200 rounded-lg overflow-hidden"
+              >
+                <!-- Table Header -->
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <div class="flex items-center space-x-3">
+                    <Icon name="heroicons:table-cells" class="h-5 w-5 text-gray-500" />
+                    <div>
+                      <h5 class="text-sm font-semibold text-gray-900">
+                        Table {{ tableIndex + 1 }}
+                      </h5>
+                      <p class="text-xs text-gray-500">
+                        {{ table.rows?.length || 0 }} rows × {{ table.headers?.length || 0 }} columns
+                        <span v-if="table.confidence" class="ml-2">
+                          • Confidence: {{ (table.confidence * 100).toFixed(1) }}%
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    @click="deleteTable(tableIndex)"
+                    class="text-red-500 hover:text-red-700 text-xs font-medium"
+                  >
+                    Delete Table
+                  </button>
+                </div>
+
+                <!-- Table Data with Scroll Container -->
+                <div class="relative">
+                  <!-- Scroll indicator -->
+                  <div class="absolute top-3 right-3 z-20 bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-medium shadow-sm pointer-events-none opacity-75">
+                    ← Scroll to see all columns →
+                  </div>
+                  
+                  <div class="overflow-x-auto overflow-y-auto max-h-[600px] border-t border-gray-200" style="scrollbar-width: thin;">
+                    <table class="w-full divide-y divide-gray-200" style="table-layout: auto;">
+                      <!-- Column Delete Buttons -->
+                      <thead class="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                        <tr>
+                          <th class="px-3 py-2 h-10 w-12 bg-gray-50 sticky left-0 z-20 border-r border-gray-200">
+                            <!-- Empty for row delete column -->
+                          </th>
+                          <th
+                            v-for="(header, columnIndex) in table.headers"
+                            :key="`header-btn-${columnIndex}`"
+                            class="px-3 py-2 h-10 bg-gray-50 min-w-[200px]"
                           >
-                            <Icon name="heroicons:x-mark" class="h-3 w-3" />
-                          </button>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                      <tr
-                        v-for="(row, index) in extractionResult.preview.rows"
-                        :key="index"
-                        class="hover:bg-gray-50"
-                      >
-                        <!-- Delete row button column -->
-                        <td class="px-3 py-2 whitespace-nowrap text-sm text-gray-900 w-12">
+                            <button
+                              @click="deleteColumn(tableIndex, columnIndex)"
+                              class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center mx-auto"
+                              :title="`Delete column ${columnIndex + 1}`"
+                            >
+                              <Icon name="heroicons:x-mark" class="h-3 w-3" />
+                            </button>
+                          </th>
+                        </tr>
+                      <!-- Header Row - Now Deletable -->
+                      <tr class="hover:bg-gray-100">
+                        <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-12 sticky left-0 z-20 border-r border-gray-200">
                           <button
-                            @click="deleteRow(index)"
+                            @click="deleteHeaderRow(tableIndex)"
                             class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
-                            :title="`Delete row ${index + 1}`"
+                            :title="`Delete header row`"
                           >
                             <Icon name="heroicons:trash" class="h-3 w-3" />
                           </button>
-                        </td>
-                        <!-- Data columns -->
-                        <td
-                          v-for="(value, fieldIndex) in row"
-                          :key="fieldIndex"
-                          class="px-3 py-2 whitespace-nowrap text-sm text-gray-900"
+                        </th>
+                        <th
+                          v-for="(header, columnIndex) in table.headers"
+                          :key="`header-${columnIndex}`"
+                          class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 min-w-[200px]"
                         >
-                          {{ value }}
-                        </td>
+                          <input
+                            v-model="table.headers[columnIndex]"
+                            class="w-full min-w-[180px] bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded px-1"
+                            @blur="updateTableData(tableIndex)"
+                          />
+                        </th>
                       </tr>
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody class="bg-white divide-y divide-gray-200">
+                        <tr
+                          v-for="(row, rowIndex) in table.rows"
+                          :key="`row-${rowIndex}`"
+                          class="hover:bg-gray-50 transition-colors"
+                        >
+                          <!-- Delete Row Button - Sticky -->
+                          <td class="px-3 py-2 text-sm text-gray-500 w-12 bg-white sticky left-0 z-10 border-r border-gray-200">
+                            <button
+                              @click="deleteRow(tableIndex, rowIndex)"
+                              class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
+                              :title="`Delete row ${rowIndex + 1}`"
+                            >
+                              <Icon name="heroicons:trash" class="h-3 w-3" />
+                            </button>
+                          </td>
+                          <!-- Editable Data Cells -->
+                          <td
+                            v-for="(cell, cellIndex) in row"
+                            :key="`cell-${cellIndex}`"
+                            class="px-3 py-2 text-sm text-gray-900 min-w-[200px]"
+                          >
+                            <input
+                              v-model="table.rows[rowIndex][cellIndex]"
+                              class="w-full min-w-[180px] bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded px-2 py-1 transition-colors"
+                              @blur="updateTableData(tableIndex)"
+                            />
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Empty state if no tables -->
+              <div v-if="!extractionResult.allTables || extractionResult.allTables.length === 0" class="text-center py-8 border border-gray-200 rounded-lg">
+                <Icon name="heroicons:table-cells" class="mx-auto h-12 w-12 text-gray-400" />
+                <p class="mt-2 text-sm text-gray-500">No tables extracted</p>
+              </div>
+
+              <!-- Save to Database Section -->
+              <div v-if="extractionResult.allTables && extractionResult.allTables.length > 0" class="mt-8 p-6 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 class="text-lg font-semibold text-gray-900">Save to Database</h4>
+                    <p class="text-sm text-gray-600 mt-1">
+                      Save {{ extractionResult.allTables.length }} table(s) to the database
+                    </p>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-2xl font-bold text-indigo-600">
+                      {{ extractionResult.allTables.reduce((sum, t) => sum + (t.rows?.length || 0), 0) }}
+                    </div>
+                    <div class="text-xs text-gray-500">Total Records</div>
+                  </div>
+                </div>
+
+                <!-- Progress Steps -->
+                <div v-if="isSaving" class="mb-6">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-gray-700">Saving Progress</span>
+                    <span class="text-sm text-gray-500">{{ saveProgress.current }}/{{ saveProgress.total }}</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+                    <div 
+                      class="bg-indigo-600 h-2 rounded-full transition-all duration-300 ease-out"
+                      :style="{ width: `${(saveProgress.current / saveProgress.total) * 100}%` }"
+                    ></div>
+                  </div>
+                  
+                  <!-- Step Indicators -->
+                  <div class="space-y-2">
+                    <div 
+                      v-for="(step, index) in saveSteps" 
+                      :key="index"
+                      class="flex items-center space-x-3"
+                    >
+                      <div 
+                        :class="[
+                          'w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium',
+                          index < saveProgress.current ? 'bg-green-500 text-white' :
+                          index === saveProgress.current ? 'bg-indigo-500 text-white animate-pulse' :
+                          'bg-gray-300 text-gray-600'
+                        ]"
+                      >
+                        <Icon 
+                          v-if="index < saveProgress.current" 
+                          name="heroicons:check" 
+                          class="h-4 w-4" 
+                        />
+                        <Icon 
+                          v-else-if="index === saveProgress.current" 
+                          name="heroicons:arrow-path" 
+                          class="h-4 w-4 animate-spin" 
+                        />
+                        <span v-else>{{ index + 1 }}</span>
+                      </div>
+                      <span 
+                        :class="[
+                          'text-sm',
+                          index < saveProgress.current ? 'text-green-700' :
+                          index === saveProgress.current ? 'text-indigo-700 font-medium' :
+                          'text-gray-500'
+                        ]"
+                      >
+                        {{ step }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Save Button -->
+                <div class="flex items-center justify-between">
+                  <div class="text-sm text-gray-600">
+                    <span v-if="!isSaving">
+                      Ready to save {{ extractionResult.allTables.filter(t => t.rows && t.rows.length > 0).length }} non-empty table(s)
+                      <br>
+                      <span class="text-xs text-indigo-600">💡 You can delete the header row to promote the first data row as new header</span>
+                    </span>
+                    <span v-else class="text-indigo-600">
+                      {{ saveProgress.message }}
+                    </span>
+                  </div>
+                  <UiButton
+                    variant="primary"
+                    size="lg"
+                    :loading="isSaving"
+                    :disabled="isSaving || !hasValidTables"
+                    icon="heroicons:cloud-arrow-up"
+                    @click="saveToDatabase"
+                  >
+                    {{ isSaving ? 'Saving...' : 'Save to Database' }}
+                  </UiButton>
+                </div>
+
+                <!-- Success/Error Messages -->
+                <div v-if="saveResult" class="mt-4">
+                  <div 
+                    :class="[
+                      'p-4 rounded-lg flex items-center space-x-3',
+                      saveResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
+                    ]"
+                  >
+                    <Icon 
+                      :name="saveResult.success ? 'heroicons:check-circle' : 'heroicons:x-circle'"
+                      :class="saveResult.success ? 'h-6 w-6 text-green-500' : 'h-6 w-6 text-red-500'"
+                    />
+                    <div>
+                      <p :class="saveResult.success ? 'text-green-800 font-medium' : 'text-red-800 font-medium'">
+                        {{ saveResult.message }}
+                      </p>
+                      <p v-if="saveResult.details" class="text-sm mt-1 text-gray-600">
+                        {{ saveResult.details }}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -346,6 +541,23 @@ const isDragOver = ref(false)
 const extractionResult = ref(null)
 const recentExtractions = ref([])
 
+// Save to database state
+const isSaving = ref(false)
+const saveProgress = ref({
+  current: 0,
+  total: 0,
+  message: ''
+})
+const saveSteps = ref([
+  'Validating tables...',
+  'Mapping columns to database fields...',
+  'Detecting table types...',
+  'Preparing data for insertion...',
+  'Inserting data into database...',
+  'Finalizing save...'
+])
+const saveResult = ref(null)
+
 // File input refs
 const fileInput = ref(null)
 const dropZone = ref(null)
@@ -364,6 +576,13 @@ const dropZoneClasses = computed(() => {
     ? 'border-indigo-400 bg-indigo-50' 
     : 'border-gray-300 hover:border-gray-400'
   return `${base} ${state}`
+})
+
+const hasValidTables = computed(() => {
+  if (!extractionResult.value?.allTables) return false
+  return extractionResult.value.allTables.some(table => 
+    table.rows && table.rows.length > 0 && table.headers && table.headers.length > 0
+  )
 })
 
 // Methods
@@ -499,29 +718,25 @@ const uploadAndExtract = async () => {
       const tables = Array.isArray(jsonData.tables) ? jsonData.tables : []
       const summary = typeof jsonData.summary === 'object' && jsonData.summary !== null ? jsonData.summary : {}
 
-      // Get the first table for preview
-      const firstTable = tables[0] || {}
-      const headers = Array.isArray(firstTable.headers) ? firstTable.headers : []
-      const rows = Array.isArray(firstTable.rows) ? firstTable.rows : []
+      // Process ALL tables with ALL rows (no slicing!)
+      const allTables = tables.map(table => ({
+        headers: Array.isArray(table.headers) ? [...table.headers] : [],
+        rows: Array.isArray(table.rows) ? table.rows.map(row => [...row]) : [],
+        confidence: table.confidence || null,
+        dimensions: table.dimensions || null
+      }))
 
-      // Take first 3 rows for preview
-      const previewRows = rows.slice(0, 3)
+      // Calculate total records across all tables
+      const totalRecords = allTables.reduce((sum, table) => sum + (table.rows?.length || 0), 0)
+      const totalFields = allTables.reduce((sum, table) => sum + (table.headers?.length || 0), 0)
 
       extractionResult.value = {
         summary: {
-          records: summary.total_records || previewRows.length || 0,
-          fields: summary.total_fields || headers.length || 0,
-          tables: summary.total_tables || tables.length || 0
+          records: summary.total_records || totalRecords,
+          fields: summary.total_fields || totalFields,
+          tables: summary.total_tables || tables.length
         },
-        preview: {
-          fields: headers,
-          rows: previewRows
-        },
-        analysis: headers.map(header => ({
-          name: header,
-          type: 'String',
-          nullCount: 0
-        })),
+        allTables: allTables, // Store all tables with all data
         warnings: [],
         extractionOutput: data.results.extraction_output,
         filename: data.filename,
@@ -529,6 +744,8 @@ const uploadAndExtract = async () => {
         // Add the full JSON data for advanced features
         rawData: jsonData
       }
+
+      console.log("✅ Loaded", allTables.length, "tables with", totalRecords, "total rows");
     } else {
       // Fallback if no JSON files found - show a message to the user
       console.log("No firstFile or firstFile.data found, using fallback");
@@ -538,11 +755,7 @@ const uploadAndExtract = async () => {
           fields: 0,
           tables: 0
         },
-        preview: {
-          fields: [],
-          rows: []
-        },
-        analysis: [],
+        allTables: [],
         warnings: [
           'No valid JSON extraction data found. The PDF was processed but the backend did not return extractable data. Please check the backend logs and output structure.'
         ],
@@ -587,27 +800,197 @@ const formatFileSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-const deleteRow = (rowIndex) => {
+const deleteRow = (tableIndex, rowIndex) => {
   if (confirm('Are you sure you want to delete this row?')) {
-    extractionResult.value.preview.rows.splice(rowIndex, 1)
-    // Update summary
-    extractionResult.value.summary.records = extractionResult.value.preview.rows.length
+    const table = extractionResult.value.allTables[tableIndex]
+    
+    // Simply delete the row - no header promotion during editing
+    table.rows.splice(rowIndex, 1)
+    
+    // Update summary - recalculate total records
+    const totalRecords = extractionResult.value.allTables.reduce(
+      (sum, t) => sum + (t.rows?.length || 0), 0
+    )
+    extractionResult.value.summary.records = totalRecords
   }
 }
 
-const deleteColumn = (columnIndex) => {
+const deleteHeaderRow = (tableIndex) => {
+  if (confirm('Are you sure you want to delete the header row? The first data row will become the new header.')) {
+    const table = extractionResult.value.allTables[tableIndex]
+    
+    // If there are data rows, promote the first one to header
+    if (table.rows && table.rows.length > 0) {
+      // Use the first data row as the new header
+      const newHeader = [...table.rows[0]]
+      table.headers = newHeader
+      
+      // Remove the promoted row from data
+      table.rows.splice(0, 1)
+      
+      console.log(`📋 Table ${tableIndex + 1}: Promoted first data row to header`)
+    } else {
+      // If no data rows, just clear the headers
+      table.headers = []
+      console.log(`📋 Table ${tableIndex + 1}: Cleared headers (no data rows)`)
+    }
+    
+    // Update summary - recalculate total records
+    const totalRecords = extractionResult.value.allTables.reduce(
+      (sum, t) => sum + (t.rows?.length || 0), 0
+    )
+    extractionResult.value.summary.records = totalRecords
+  }
+}
+
+const deleteColumn = (tableIndex, columnIndex) => {
   if (confirm('Are you sure you want to delete this column?')) {
-    // Remove the field from fields array
-    extractionResult.value.preview.fields.splice(columnIndex, 1)
+    const table = extractionResult.value.allTables[tableIndex]
+    
+    // Remove the header
+    table.headers.splice(columnIndex, 1)
     
     // Remove the corresponding data from each row
-    extractionResult.value.preview.rows.forEach(row => {
+    table.rows.forEach(row => {
       row.splice(columnIndex, 1)
     })
     
-    // Update summary
-    extractionResult.value.summary.fields = extractionResult.value.preview.fields.length
+    // Update summary - recalculate total fields
+    const totalFields = extractionResult.value.allTables.reduce(
+      (sum, t) => sum + (t.headers?.length || 0), 0
+    )
+    extractionResult.value.summary.fields = totalFields
   }
+}
+
+const deleteTable = (tableIndex) => {
+  if (confirm('Are you sure you want to delete this entire table?')) {
+    extractionResult.value.allTables.splice(tableIndex, 1)
+    
+    // Update summary
+    const totalRecords = extractionResult.value.allTables.reduce(
+      (sum, t) => sum + (t.rows?.length || 0), 0
+    )
+    const totalFields = extractionResult.value.allTables.reduce(
+      (sum, t) => sum + (t.headers?.length || 0), 0
+    )
+    extractionResult.value.summary.records = totalRecords
+    extractionResult.value.summary.fields = totalFields
+    extractionResult.value.summary.tables = extractionResult.value.allTables.length
+  }
+}
+
+const updateTableData = (tableIndex) => {
+  // This function is called when a cell is edited
+  // You can add any post-edit logic here (e.g., validation, auto-save)
+  console.log(`Table ${tableIndex} updated`)
+}
+
+// Save to database functionality
+const saveToDatabase = async () => {
+  if (!hasValidTables.value) return
+
+  isSaving.value = true
+  saveResult.value = null
+  saveProgress.value = {
+    current: 0,
+    total: saveSteps.value.length,
+    message: 'Starting save process...'
+  }
+
+  try {
+    // Step 1: Validate tables
+    updateProgress(0, 'Validating tables...')
+    await new Promise(resolve => setTimeout(resolve, 500)) // Simulate processing
+
+    // Step 2: Map columns to database fields
+    updateProgress(1, 'Mapping columns to database fields...')
+    await new Promise(resolve => setTimeout(resolve, 800))
+
+    // Step 3: Detect table types
+    updateProgress(2, 'Detecting table types...')
+    await new Promise(resolve => setTimeout(resolve, 600))
+
+    // Step 4: Prepare data for insertion
+    updateProgress(3, 'Preparing data for insertion...')
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    // Step 5: Insert data into database
+    updateProgress(4, 'Inserting data into database...')
+    
+    // Filter out empty tables
+    const validTables = extractionResult.value.allTables.filter(table => 
+      table.rows && table.rows.length > 0 && table.headers && table.headers.length > 0
+    )
+
+    const response = await fetch('http://localhost:8081/api/v1/extraction/save-to-db', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tables: validTables,
+        filename: selectedFile.value?.name || 'unknown'
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || 'Failed to save to database')
+    }
+
+    const result = await response.json()
+
+    // Step 6: Finalize save
+    updateProgress(5, 'Finalizing save...')
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    // Success
+    saveResult.value = {
+      success: true,
+      message: `Successfully saved ${result.saved_tables || validTables.length} table(s) to database!`,
+      details: result.details || `Total records saved: ${result.total_records || 0}`
+    }
+
+  } catch (error) {
+    console.error('Save to database failed:', error)
+    saveResult.value = {
+      success: false,
+      message: 'Failed to save to database',
+      details: error.message
+    }
+  } finally {
+    isSaving.value = false
+  }
+}
+
+const updateProgress = (step, message) => {
+  saveProgress.value.current = step
+  saveProgress.value.message = message
+}
+
+// Promote first row to header for all tables before saving
+const promoteFirstRowToHeader = () => {
+  if (!extractionResult.value?.allTables) return
+  
+  extractionResult.value.allTables.forEach((table, tableIndex) => {
+    if (table.rows && table.rows.length > 0) {
+      // Use the first row as the new header
+      const newHeader = [...table.rows[0]]
+      table.headers = newHeader
+      
+      // Remove the first row from data (since it's now the header)
+      table.rows.splice(0, 1)
+      
+      console.log(`📋 Table ${tableIndex + 1}: Promoted first row to header`)
+    }
+  })
+  
+  // Update summary after header promotion
+  const totalRecords = extractionResult.value.allTables.reduce(
+    (sum, t) => sum + (t.rows?.length || 0), 0
+  )
+  extractionResult.value.summary.records = totalRecords
 }
 
 // Lifecycle
@@ -623,3 +1006,47 @@ useHead({
   ]
 })
 </script>
+
+<style scoped>
+/* Custom scrollbar styling for better UX */
+.overflow-x-auto::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track,
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover,
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Smooth scrolling */
+.overflow-x-auto,
+.overflow-y-auto {
+  scroll-behavior: smooth;
+}
+
+/* Better input focus states */
+input:focus {
+  outline: none;
+}
+
+/* Sticky column shadow effect */
+td.sticky,
+th.sticky {
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+}
+</style>

@@ -11,11 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
+	"workbench/internal/core/models"
 )
 
 type ExtractionHandler struct {
@@ -29,6 +31,7 @@ func NewExtractionHandler(db *gorm.DB) *ExtractionHandler {
 func (h *ExtractionHandler) ExtractionRoutes(g *echo.Group) {
 	extraction := g.Group("/extraction")
 	extraction.POST("/process-pdf", h.ProcessPDF)
+	extraction.POST("/save-to-db", h.SaveToDatabase)
 	extraction.GET("/status/:id", h.GetExtractionStatus)
 	extraction.GET("/debug", h.DebugFiles)
 	extraction.GET("/latest-json", h.GetLatestJson)
@@ -408,4 +411,471 @@ func (h *ExtractionHandler) GetLatestJson(c echo.Context) error {
 		"size": fileInfo.Size(),
 		"modified": fileInfo.ModTime().Format(time.RFC3339),
 	})
+}
+
+// SaveToDatabase handles saving extracted tables to database
+func (h *ExtractionHandler) SaveToDatabase(c echo.Context) error {
+	log.Println("🚀 Starting save to database process")
+	
+	// Parse request body
+	var request struct {
+		Tables   []map[string]interface{} `json:"tables"`
+		Filename string                  `json:"filename"`
+	}
+	
+	if err := c.Bind(&request); err != nil {
+		log.Printf("❌ Failed to parse request: %v", err)
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "Invalid request format",
+		})
+	}
+	
+	log.Printf("📊 Received %d tables to save", len(request.Tables))
+	
+	// Filter out empty tables
+	validTables := make([]map[string]interface{}, 0)
+	for i, table := range request.Tables {
+		headers, ok1 := table["headers"].([]interface{})
+		rows, ok2 := table["rows"].([]interface{})
+		
+		if ok1 && ok2 && len(headers) > 0 && len(rows) > 0 {
+			validTables = append(validTables, table)
+			log.Printf("✅ Table %d: %d headers, %d rows", i+1, len(headers), len(rows))
+		} else {
+			log.Printf("⚠️ Skipping empty table %d", i+1)
+		}
+	}
+	
+	if len(validTables) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "No valid tables to save",
+		})
+	}
+	
+	log.Printf("💾 Processing %d valid tables", len(validTables))
+	
+	// Process each table
+	savedTables := 0
+	totalRecords := 0
+	
+	for i, table := range validTables {
+		log.Printf("🔄 Processing table %d/%d", i+1, len(validTables))
+		
+		// Map headers to database fields using fuzzy matching
+		mappedData, err := h.mapTableToDatabaseFields(table)
+		if err != nil {
+			log.Printf("❌ Failed to map table %d: %v", i+1, err)
+			continue
+		}
+		
+		// Determine table type and save
+		tableType := h.detectTableType(mappedData)
+		log.Printf("🎯 Table %d detected as: %s", i+1, tableType)
+		
+		records, err := h.saveTableToDatabase(tableType, mappedData)
+		if err != nil {
+			log.Printf("❌ Failed to save table %d: %v", i+1, err)
+			continue
+		}
+		
+		savedTables++
+		totalRecords += records
+		log.Printf("✅ Table %d saved: %d records", i+1, records)
+	}
+	
+	log.Printf("🎉 Save complete: %d tables, %d total records", savedTables, totalRecords)
+	
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success": true,
+		"saved_tables": savedTables,
+		"total_records": totalRecords,
+		"details": fmt.Sprintf("Successfully saved %d tables with %d total records to database", savedTables, totalRecords),
+	})
+}
+
+// mapTableToDatabaseFields maps table headers to database field names using fuzzy matching
+func (h *ExtractionHandler) mapTableToDatabaseFields(table map[string]interface{}) (map[string]interface{}, error) {
+	headers, ok1 := table["headers"].([]interface{})
+	rows, ok2 := table["rows"].([]interface{})
+	
+	if !ok1 || !ok2 {
+		return nil, fmt.Errorf("invalid table format")
+	}
+	
+	// Database field mappings for fuzzy matching
+	fieldMappings := map[string]string{
+		// Geographic fields
+		"country": "country",
+		"region": "region",
+		"sub_region": "sub_region",
+		"business_regions": "business_regions",
+		"basin": "basin",
+		"sub_basin": "sub_basin",
+		
+		// Well fields
+		"well": "well_name_field_name",
+		"well_name": "well_name_field_name",
+		"field": "well_name_field_name",
+		"uwi": "uwi",
+		
+		// Coordinates
+		"lat": "latitude",
+		"latitude": "latitude",
+		"lon": "longitude",
+		"longitude": "longitude",
+		"coord": "latitude",
+		
+		// Formation
+		"formation": "formation_name",
+		"reservoir": "reservoir_name",
+		"period": "period",
+		"epoch": "epoch",
+		"age": "age",
+		
+		// Depth fields
+		"depth": "top_depth_mmddf",
+		"top_depth": "top_depth_mmddf",
+		"bottom_depth": "bottom_depth_mmddf",
+		"porosity": "visible_porosity_percent",
+		"permeability": "permeability_md",
+		
+		// Carbonate specific
+		"calcite": "calcite",
+		"dolomite": "dolomite",
+		"micrite": "micrite",
+		"bioclast": "bioclasts",
+		"coral": "coral",
+		"algae": "red_algae",
+		
+		// Clastic specific
+		"quartz": "monocrystalline_quartz",
+		"feldspar": "potassium_feldspar",
+		"mica": "muscovite",
+		"grain_size": "grain_size",
+		"sorting": "sorting",
+	}
+	
+	// Create mapping from user headers to database fields
+	headerMapping := make(map[int]string)
+	
+	for i, header := range headers {
+		headerStr := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", header)))
+		
+		// Try exact match first
+		if dbField, exists := fieldMappings[headerStr]; exists {
+			headerMapping[i] = dbField
+			continue
+		}
+		
+		// Try fuzzy matching
+		bestMatch := ""
+		bestScore := 0.0
+		
+		for userField, dbField := range fieldMappings {
+			score := h.calculateSimilarity(headerStr, userField)
+			if score > 0.6 && score > bestScore { // 60% similarity threshold
+				bestMatch = dbField
+				bestScore = score
+			}
+		}
+		
+		if bestMatch != "" {
+			headerMapping[i] = bestMatch
+			log.Printf("🔗 Mapped '%s' -> '%s' (score: %.2f)", headerStr, bestMatch, bestScore)
+		} else {
+			log.Printf("⚠️ No mapping found for header: '%s'", headerStr)
+		}
+	}
+	
+	// Create mapped data structure
+	mappedData := map[string]interface{}{
+		"headers": headers,
+		"rows": rows,
+		"mapping": headerMapping,
+	}
+	
+	return mappedData, nil
+}
+
+// calculateSimilarity calculates string similarity using simple algorithm
+func (h *ExtractionHandler) calculateSimilarity(s1, s2 string) float64 {
+	if s1 == s2 {
+		return 1.0
+	}
+	
+	// Simple similarity based on common substrings
+	common := 0
+	maxLen := len(s1)
+	if len(s2) > maxLen {
+		maxLen = len(s2)
+	}
+	
+	for i := 0; i < len(s1) && i < len(s2); i++ {
+		if s1[i] == s2[i] {
+			common++
+		}
+	}
+	
+	return float64(common) / float64(maxLen)
+}
+
+// detectTableType determines if table is carbonate or clastic based on content
+func (h *ExtractionHandler) detectTableType(mappedData map[string]interface{}) string {
+	headers, _ := mappedData["headers"].([]interface{})
+	
+	// Check for carbonate-specific terms
+	carbonateTerms := []string{"calcite", "dolomite", "micrite", "bioclast", "coral", "algae", "porosity"}
+	clasticTerms := []string{"quartz", "feldspar", "mica", "grain", "sorting", "sandstone", "siltstone"}
+	
+	carbonateScore := 0
+	clasticScore := 0
+	
+	for _, header := range headers {
+		headerStr := strings.ToLower(fmt.Sprintf("%v", header))
+		
+		for _, term := range carbonateTerms {
+			if strings.Contains(headerStr, term) {
+				carbonateScore++
+			}
+		}
+		
+		for _, term := range clasticTerms {
+			if strings.Contains(headerStr, term) {
+				clasticScore++
+			}
+		}
+	}
+	
+	if carbonateScore > clasticScore {
+		return "petrography_carbonate"
+	} else if clasticScore > carbonateScore {
+		return "petrography_clastic"
+	} else {
+		// Default to carbonate if unclear
+		return "petrography_carbonate"
+	}
+}
+
+// saveTableToDatabase saves the mapped table data to the appropriate database table
+func (h *ExtractionHandler) saveTableToDatabase(tableType string, mappedData map[string]interface{}) (int, error) {
+	headers, _ := mappedData["headers"].([]interface{})
+	rows, _ := mappedData["rows"].([]interface{})
+	mapping, _ := mappedData["mapping"].(map[int]string)
+	
+	log.Printf("💾 Saving to table: %s", tableType)
+	log.Printf("📋 Headers: %v", headers)
+	log.Printf("🔗 Mapping: %v", mapping)
+	log.Printf("📊 Rows: %d", len(rows))
+	
+	// Get database connection
+	db := h.db
+	
+	// Insert records based on table type
+	switch tableType {
+	case "petrography_carbonate":
+		return h.insertCarbonateRecords(db, headers, rows, mapping)
+	case "petrography_clastic":
+		return h.insertClasticRecords(db, headers, rows, mapping)
+	default:
+		log.Printf("⚠️ Unknown table type: %s", tableType)
+		return 0, fmt.Errorf("unknown table type: %s", tableType)
+	}
+}
+
+// insertCarbonateRecords inserts data into the petrography_carbonate table
+func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interface{}, rows []interface{}, mapping map[int]string) (int, error) {
+	recordCount := 0
+	
+	for _, row := range rows {
+		rowSlice, ok := row.([]interface{})
+		if !ok {
+			continue
+		}
+		
+		// Check if row has data
+		hasData := false
+		for _, cell := range rowSlice {
+			if str, ok := cell.(string); ok && str != "" {
+				hasData = true
+				break
+			}
+		}
+		if !hasData {
+			continue
+		}
+		
+		// Create carbonate record
+		carbonate := models.EPBEPetrographyCarbonate{}
+		
+		// Map data to struct fields
+		for colIndex, cell := range rowSlice {
+			cellStr, ok := cell.(string)
+			if !ok {
+				continue
+			}
+			
+			fieldName, exists := mapping[colIndex]
+			if !exists {
+				continue
+			}
+			
+			// Map field names to struct fields
+			switch fieldName {
+			case "well_name_field_name":
+				carbonate.WellNameFieldName = cellStr
+			case "country":
+				carbonate.Country = cellStr
+			case "region":
+				carbonate.Region = cellStr
+			case "basin":
+				carbonate.Basin = cellStr
+			case "top_depth_mmddf":
+				if depth, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.TopDepthMMDDF = &depth
+				}
+			case "bottom_depth_mmddf":
+				if depth, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.BottomDepthMMDDF = &depth
+				}
+			case "formation_name":
+				carbonate.FormationName = cellStr
+			case "reservoir_name":
+				carbonate.ReservoirName = cellStr
+			case "period":
+				carbonate.Period = cellStr
+			case "lithofacies_core":
+				carbonate.LithofaciesCore = cellStr
+			case "porosity":
+				if porosity, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.VisiblePorosityPercent = &porosity
+				}
+			case "calcite":
+				if calcite, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.Calcite = &calcite
+				}
+			case "dolomite":
+				if dolomite, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.Dolomite = &dolomite
+				}
+			case "micrite":
+				if micrite, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.Micrite = &micrite
+				}
+			case "bioclasts":
+				if bioclasts, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					carbonate.Bioclasts = &bioclasts
+				}
+			}
+		}
+		
+		// Insert record
+		if err := db.Create(&carbonate).Error; err != nil {
+			log.Printf("❌ Failed to insert carbonate record: %v", err)
+			continue
+		}
+		
+		recordCount++
+	}
+	
+	log.Printf("✅ Inserted %d carbonate records", recordCount)
+	return recordCount, nil
+}
+
+// insertClasticRecords inserts data into the petrography_clastic table
+func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interface{}, rows []interface{}, mapping map[int]string) (int, error) {
+	recordCount := 0
+	
+	for _, row := range rows {
+		rowSlice, ok := row.([]interface{})
+		if !ok {
+			continue
+		}
+		
+		// Check if row has data
+		hasData := false
+		for _, cell := range rowSlice {
+			if str, ok := cell.(string); ok && str != "" {
+				hasData = true
+				break
+			}
+		}
+		if !hasData {
+			continue
+		}
+		
+		// Create clastic record
+		clastic := models.EPBEPetrographyClastic{}
+		
+		// Map data to struct fields
+		for colIndex, cell := range rowSlice {
+			cellStr, ok := cell.(string)
+			if !ok {
+				continue
+			}
+			
+			fieldName, exists := mapping[colIndex]
+			if !exists {
+				continue
+			}
+			
+			// Map field names to struct fields
+			switch fieldName {
+			case "well_name_field_name":
+				clastic.WellNameFieldName = cellStr
+			case "country":
+				clastic.Country = cellStr
+			case "region":
+				clastic.Region = cellStr
+			case "basin":
+				clastic.Basin = cellStr
+			case "top_depth_mmddf":
+				if depth, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					clastic.TopDepthMMDDF = &depth
+				}
+			case "bottom_depth_mmddf":
+				if depth, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					clastic.BottomDepthMMDDF = &depth
+				}
+			case "formation_name":
+				clastic.FormationName = cellStr
+			case "reservoir_name":
+				clastic.ReservoirName = cellStr
+			case "period":
+				clastic.Period = cellStr
+			case "lithofacies_core":
+				clastic.Lithofacies = cellStr
+			case "porosity":
+				if porosity, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					clastic.VisiblePorosityPercent = &porosity
+				}
+			case "quartz":
+				if quartz, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					clastic.TotalQuartzPercent = &quartz
+				}
+			case "feldspar":
+				if feldspar, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					clastic.TotalFeldsparPercent = &feldspar
+				}
+			case "mica":
+				if mica, err := strconv.ParseFloat(cellStr, 64); err == nil {
+					clastic.TotalMicaPercent = &mica
+				}
+			case "grain_size":
+				clastic.GrainSize = cellStr
+			case "sorting":
+				clastic.Sorting = cellStr
+			}
+		}
+		
+		// Insert record
+		if err := db.Create(&clastic).Error; err != nil {
+			log.Printf("❌ Failed to insert clastic record: %v", err)
+			continue
+		}
+		
+		recordCount++
+	}
+	
+	log.Printf("✅ Inserted %d clastic records", recordCount)
+	return recordCount, nil
 }
