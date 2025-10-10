@@ -17,8 +17,8 @@ from datetime import datetime
 # -----------------------------
 # CONFIG
 # -----------------------------
-PDF_DIR = "/Users/husaini.rosdi/Documents/working_project/pdf-extraction/final_extraction_system/input_pdfs"
-OUTPUT_DIR = "/Users/husaini.rosdi/Documents/working_project/pdf-extraction/final_extraction_system/output"
+PDF_DIR = "./input_pdfs"
+OUTPUT_DIR = "./output"
 
 # Camelot Settings
 camelot_config = {
