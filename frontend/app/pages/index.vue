@@ -325,7 +325,13 @@ const currentTablePage = computed(() => {
 
 const pdfUrl = computed(() => {
   if (!extractionResult.value?.filename) return null
-  // For now, serve the full PDF since page extraction is not implemented
+  
+  // If we have a selected table with page information, show that specific page
+  if (selectedTable.value?.page) {
+    return `http://localhost:8081/api/v1/extraction/pdf/${extractionResult.value.filename}#page=${selectedTable.value.page}`
+  }
+  
+  // Otherwise, show the full PDF
   return `http://localhost:8081/api/v1/extraction/pdf/${extractionResult.value.filename}`
 })
 
@@ -420,7 +426,7 @@ const uploadAndExtract = async () => {
 // Split-screen functionality methods
 const selectTable = (tableIndex) => {
   selectedTableIndex.value = tableIndex
-  console.log(`Selected table ${tableIndex + 1}`)
+  console.log(`Selected table ${tableIndex + 1}, navigating to page ${selectedTable.value?.page || 1}`)
 }
 
 // Table editing methods
