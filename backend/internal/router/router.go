@@ -17,6 +17,7 @@ func Setup() *echo.Echo {
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
 
 	// Health check endpoint
 	e.GET("/health", func(c echo.Context) error {
