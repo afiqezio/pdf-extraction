@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -42,7 +41,7 @@ func (h *ExtractionHandler) ExtractionRoutes(g *echo.Group) {
 
 // ProcessPDF handles PDF upload and extraction
 func (h *ExtractionHandler) ProcessPDF(c echo.Context) error {
-	fmt.Printf("Processing PDF")
+	fmt.Printf("Processing PDF with Reducto\n")
 	// Get the uploaded file
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -68,7 +67,7 @@ func (h *ExtractionHandler) ProcessPDF(c echo.Context) error {
 		})
 	}
 
-	fmt.Printf("Input directory: %s", inputDir)
+	fmt.Printf("Input directory: %s\n", inputDir)
 
 	// Generate unique filename to avoid conflicts
 	timestamp := time.Now().Format("20060102_150405")
@@ -100,10 +99,10 @@ func (h *ExtractionHandler) ProcessPDF(c echo.Context) error {
 		})
 	}
 
-	fmt.Println("Starting run python extraction")
+	fmt.Println("Starting Reducto extraction")
 
-	// Run Python extraction script
-	extractionResult, err := h.runPythonExtraction()
+	// Run Reducto-based Python extraction
+	extractionResult, err := h.runReductoExtraction(filePath)
 	if err != nil {
 		// Clean up uploaded file on error
 		os.Remove(filePath)
@@ -112,43 +111,47 @@ func (h *ExtractionHandler) ProcessPDF(c echo.Context) error {
 		})
 	}
 
-	// Keep the uploaded PDF file for the viewer (don't delete it)
-	// os.Remove(filePath) // Commented out to keep PDF for viewer
-
-	// Return extraction results
+	// Keep the uploaded PDF file for the viewer
+	// Return extraction results in frontend format
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"message": "PDF processed successfully",
-		"results": extractionResult,
-		"filename": uniqueFilename, // Return the timestamped filename that's actually stored
-		"original_filename": file.Filename, // Keep original for reference
-		"processed_at": time.Now().Format(time.RFC3339),
+		"message":           "PDF processed successfully",
+		"allBlocks":         extractionResult.AllBlocks,
+		"filename":          uniqueFilename,
+		"original_filename": file.Filename,
+		"processed_at":      time.Now().Format(time.RFC3339),
 	})
 }
 
-// runPythonExtraction executes the Python extraction script
-func (h *ExtractionHandler) runPythonExtraction() (map[string]interface{}, error) {
-	log.Println("🚀 Starting Python extraction function")
+// runReductoExtraction executes the Reducto-based Python extraction
+func (h *ExtractionHandler) runReductoExtraction(pdfPath string) (*FrontendResponse, error) {
+	log.Println("🚀 Starting Reducto extraction")
 
 	// Get the absolute path to the extraction system directory
-	dir_temp := "../"
-	log.Printf("📁 Working directory: %s", dir_temp)
+	dirTemp := "../"
+	log.Printf("📁 Working directory: %s", dirTemp)
 
-	// Use bash to activate the virtual environment and run the Python script
-	activateScript := filepath.Join(dir_temp, "temp_env", "bin", "activate")
-	pythonScriptPath := filepath.Join(dir_temp, "final_extraction_system", "better_markdown_extractor.py")
+	// Use extraction_env (which has reductoai installed)
+	pythonBinary := filepath.Join(dirTemp, "temp_env", "bin", "python")
+	pythonScriptPath := filepath.Join(dirTemp, "final_extraction_system", "extractor.py")
 
-	log.Printf("🐍 Running Python script: %s", pythonScriptPath)
+	// Check if Python binary exists
+	if _, err := os.Stat(pythonBinary); os.IsNotExist(err) {
+		log.Printf("❌ Python binary not found: %s", pythonBinary)
+		return nil, fmt.Errorf("python virtual environment not found. Run: cd final_extraction_system && python3 -m venv extraction_env && source extraction_env/bin/activate && pip install -r requirements.txt")
+	}
 
-	// Run: source activate && python script
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("source %s && python %s", activateScript, pythonScriptPath))
-	cmd.Dir = filepath.Join(dir_temp, "final_extraction_system")
+	log.Printf("🐍 Running Reducto extractor: %s for PDF: %s", pythonScriptPath, pdfPath)
 
-	// Explicitly redirect stdout and stderr for better debugging
+	// Run Python extractor
+	cmd := exec.Command(pythonBinary, pythonScriptPath, pdfPath)
+	cmd.Dir = filepath.Join(dirTemp, "final_extraction_system")
+
+	// Capture output
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// Run the command and wait for completion
+	// Run the command
 	err := cmd.Run()
 	if err != nil {
 		log.Printf("❌ Python script error: %v", err)
@@ -157,20 +160,20 @@ func (h *ExtractionHandler) runPythonExtraction() (map[string]interface{}, error
 		return nil, fmt.Errorf("python script failed: %v, stderr: %s", err, stderr.String())
 	}
 
-	output := stdout.String() + stderr.String()
-	log.Printf("✅ Python script completed successfully")
+	log.Printf("✅ Reducto extraction completed")
+	log.Printf("📤 Output: %s", stdout.String())
 
-	// Read the generated JSON files
-	outputDir := filepath.Join(dir_temp, "final_extraction_system", "output", "markdown")
-	log.Printf("📂 Looking for JSON files in: %s", outputDir)
+	// Find the generated JSON file
+	outputDir := filepath.Join(dirTemp, "final_extraction_system", "output", "reducto")
+	log.Printf("📂 Looking for Reducto JSON in: %s", outputDir)
 
 	// Check if directory exists
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		log.Printf("❌ Output directory does not exist: %s", outputDir)
 		return nil, fmt.Errorf("output directory does not exist: %s", outputDir)
 	}
-	
-	// Use os.ReadDir instead of filepath.Glob for more reliable file reading
+
+	// Read directory and find latest JSON file
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
 		log.Printf("❌ Failed to read output directory: %v", err)
@@ -179,81 +182,76 @@ func (h *ExtractionHandler) runPythonExtraction() (map[string]interface{}, error
 
 	log.Printf("📊 Found %d entries in output directory", len(entries))
 
-	// Filter and collect JSON files with their modification times
-	type fileWithTime struct {
-		path    string
-		modTime time.Time
-		info    os.FileInfo
-	}
-	var jsonFileList []fileWithTime
+	// Find the most recent JSON file
+	var latestFile string
+	var latestTime time.Time
 
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".json") {
 			fullPath := filepath.Join(outputDir, entry.Name())
 			info, err := os.Stat(fullPath)
-			if err != nil {
-				log.Printf("⚠️ Warning: could not stat file %s: %v", fullPath, err)
-				continue
+			if err == nil && info.ModTime().After(latestTime) {
+				latestTime = info.ModTime()
+				latestFile = fullPath
 			}
-			jsonFileList = append(jsonFileList, fileWithTime{
-				path:    fullPath,
-				modTime: info.ModTime(),
-				info:    info,
-			})
-			log.Printf("📄 Found JSON file: %s (modified: %s)", entry.Name(), info.ModTime().Format(time.RFC3339))
 		}
 	}
 
-	log.Printf("✅ Found %d JSON files total", len(jsonFileList))
-
-	if len(jsonFileList) == 0 {
-		log.Printf("⚠️ No JSON files found in output directory")
-		return map[string]interface{}{
-			"extraction_output": output,
-			"json_files":        nil,
-			"files_count":       0,
-		}, nil
+	if latestFile == "" {
+		return nil, fmt.Errorf("no JSON output file found in %s", outputDir)
 	}
 
-	// Sort by modification time (most recent last)
-	sort.Slice(jsonFileList, func(i, j int) bool {
-		return jsonFileList[i].modTime.Before(jsonFileList[j].modTime)
-	})
+	log.Printf("📄 Reading Reducto JSON: %s", latestFile)
 
-	// Get the most recent file
-	mostRecent := jsonFileList[len(jsonFileList)-1]
-	log.Printf("📖 Reading most recent JSON file: %s", mostRecent.info.Name())
-
-	content, err := os.ReadFile(mostRecent.path)
+	// Read and parse the Reducto JSON
+	jsonData, err := os.ReadFile(latestFile)
 	if err != nil {
-		log.Printf("❌ Failed to read JSON file: %v", err)
-		return nil, fmt.Errorf("failed to read most recent json file: %v", err)
+		return nil, fmt.Errorf("failed to read JSON file: %v", err)
 	}
 
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(content, &jsonData); err != nil {
-		log.Printf("❌ Failed to parse JSON: %v", err)
-		return nil, fmt.Errorf("failed to parse json: %v", err)
+	var reductoResp ReductoResponse
+	if err := json.Unmarshal(jsonData, &reductoResp); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %v", err)
 	}
 
-	log.Printf("✅ Successfully parsed JSON data from %s", mostRecent.info.Name())
+	var allBlocks []map[string]interface{}
 
-	jsonFiles := []map[string]interface{}{
-		{
-			"filename": mostRecent.info.Name(),
-			"path":     mostRecent.path,
-			"data":     jsonData,
-			"size":     mostRecent.info.Size(),
-			"modified": mostRecent.info.ModTime().Format(time.RFC3339),
-		},
+	// Process each page
+	for _, page := range reductoResp.Pages {
+		var chunks []ReductoChunk
+		
+		// Check if it's pipeline response (has "parse" wrapper)
+		if page.Result.Parse != nil && page.Result.Parse.Result.Chunks != nil {
+			chunks = page.Result.Parse.Result.Chunks
+			log.Printf("📦 Using pipeline response structure for page %d", page.PageNumber)
+		} else if page.Result.Chunks != nil {
+			// Fallback for old structure
+			chunks = page.Result.Chunks
+			log.Printf("📦 Using old response structure for page %d", page.PageNumber)
+		}
+		
+		// Process each chunk
+		for _, chunk := range chunks {
+			// Process each block
+			for _, block := range chunk.Blocks {
+				// Send all blocks to frontend
+				blockData := map[string]interface{}{
+					"type":       block.Type,
+					"content":    block.Content,
+					"page":       page.PageNumber,
+					"confidence": block.Confidence,
+					"bbox":       block.BBox,
+				}
+				allBlocks = append(allBlocks, blockData)
+			}
+		}
 	}
 
-	log.Printf("🎉 Extraction complete! Returning %d JSON file(s)", len(jsonFiles))
+	log.Printf("✅ Extracted %d blocks total", len(allBlocks))
 
-	return map[string]interface{}{
-		"extraction_output": output,
-		"json_files":        jsonFiles,
-		"files_count":       len(jsonFiles),
+	return &FrontendResponse{
+		AllBlocks: allBlocks, // Send all blocks
+		Filename:  reductoResp.Filename,
 	}, nil
 }
 
@@ -412,23 +410,23 @@ func (h *ExtractionHandler) GetLatestJson(c echo.Context) error {
 			"error": err.Error(),
 		})
 	}
-	
+
 	// Extract timestamped PDF filename from JSON filename
 	// JSON filename format: "20251013_102142_PMO3ANDUPP03 - PETROGRAPHIC STUDY OF ANDING UTARA-1ST1 DITCH CUTTINGS_extracted.json"
 	// Timestamped PDF filename: "20251013_102142_PMO3ANDUPP03 - PETROGRAPHIC STUDY OF ANDING UTARA-1ST1 DITCH CUTTINGS.pdf"
 	jsonFilename := fileInfo.Name()
 	timestampedPdfFilename := jsonFilename
-	
+
 	// Convert JSON filename to PDF filename
 	if strings.Contains(jsonFilename, "_extracted.json") {
 		timestampedPdfFilename = strings.Replace(jsonFilename, "_extracted.json", ".pdf", 1)
 	}
-	
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"filename": timestampedPdfFilename,
-		"path": mostRecentFile,
-		"data": jsonData,
-		"size": fileInfo.Size(),
+		"path":     mostRecentFile,
+		"data":     jsonData,
+		"size":     fileInfo.Size(),
 		"modified": fileInfo.ModTime().Format(time.RFC3339),
 	})
 }
@@ -445,7 +443,7 @@ func (h *ExtractionHandler) ServePDF(c echo.Context) error {
 	// Look for the PDF file in the input_pdfs directory (where uploaded PDFs are stored)
 	// Backend runs from backend/ directory, so we need to go up one level
 	inputPdfsPath := filepath.Join("..", "final_extraction_system", "input_pdfs", filename)
-	
+
 	// Check if file exists
 	if _, err := os.Stat(inputPdfsPath); os.IsNotExist(err) {
 		log.Printf("❌ PDF file not found: %s", inputPdfsPath)
@@ -453,13 +451,13 @@ func (h *ExtractionHandler) ServePDF(c echo.Context) error {
 			"error": "PDF file not found",
 		})
 	}
-	
+
 	pdfPath := inputPdfsPath
 
 	// Set appropriate headers for PDF viewing
 	c.Response().Header().Set("Content-Type", "application/pdf")
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename))
-	
+
 	// Serve the file
 	return c.File(pdfPath)
 }
@@ -468,7 +466,7 @@ func (h *ExtractionHandler) ServePDF(c echo.Context) error {
 func (h *ExtractionHandler) ServePDFPage(c echo.Context) error {
 	filename := c.Param("filename")
 	pageStr := c.Param("page")
-	
+
 	if filename == "" || pageStr == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Filename and page parameters are required",
@@ -486,7 +484,7 @@ func (h *ExtractionHandler) ServePDFPage(c echo.Context) error {
 	// Look for the PDF file in the input_pdfs directory
 	// Backend runs from backend/ directory, so we need to go up one level
 	inputPdfsPath := filepath.Join("..", "final_extraction_system", "input_pdfs", filename)
-	
+
 	// Check if file exists
 	if _, err := os.Stat(inputPdfsPath); os.IsNotExist(err) {
 		log.Printf("❌ PDF file not found: %s", inputPdfsPath)
@@ -499,7 +497,7 @@ func (h *ExtractionHandler) ServePDFPage(c echo.Context) error {
 	// Set appropriate headers for PDF viewing
 	c.Response().Header().Set("Content-Type", "application/pdf")
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filename))
-	
+
 	// Serve the file
 	return c.File(inputPdfsPath)
 }
@@ -556,25 +554,25 @@ func (h *ExtractionHandler) SaveToDatabase(c echo.Context) error {
 		log.Printf("🔍 Mapping headers for table %d", i+1)
 		headers, _ := table["headers"].([]interface{})
 		log.Printf("📋 Original headers: %v", headers)
-		
+
 		mappedData, err := h.mapTableToDatabaseFields(table)
 		if err != nil {
 			log.Printf("❌ Failed to map table %d: %v", i+1, err)
 			continue
 		}
-		
+
 		log.Printf("🎯 Mapped data keys: %v", getMapKeys(mappedData))
 		if mapping, ok := mappedData["mapping"].(map[int]string); ok {
 			log.Printf("🔗 Column mapping: %v", mapping)
 		}
-		
+
 		// Save to appropriate tables based on mapped fields
 		records, err := h.saveTableToDatabase(mappedData)
 		if err != nil {
 			log.Printf("❌ Failed to save table %d: %v", i+1, err)
 			continue
 		}
-		
+
 		log.Printf("✅ Table %d saved: %d records", i+1, records)
 		savedTables++
 		totalRecords += records
@@ -598,124 +596,610 @@ func (h *ExtractionHandler) mapTableToDatabaseFields(table map[string]interface{
 	if !ok1 || !ok2 {
 		return nil, fmt.Errorf("invalid table format")
 	}
-	
-	// Get field mappings from separate file
-	fieldMappings := GetFieldMappings()
-	
+
+	log.Printf("🔍 Mapping %d headers to database fields", len(headers))
+
+	// Load field mappings from JSON file
+	fieldMappingsData, err := loadFieldMappingsFromJSON()
+	if err != nil {
+		log.Printf("⚠️ Failed to load field_mappings.json, using fallback: %v", err)
+		// Fallback to hardcoded mappings
+		fieldMappingsData = map[string]interface{}{
+			"mappings": GetFieldMappings(),
+			"fuzzy_matching": map[string]interface{}{
+				"threshold": 85.0,
+			},
+		}
+	}
+
+	// Extract mappings and config
+	mappings := make(map[string]string)
+	if mappingsMap, ok := fieldMappingsData["mappings"].(map[string]interface{}); ok {
+		for k, v := range mappingsMap {
+			if strVal, ok := v.(string); ok {
+				mappings[strings.ToLower(strings.TrimSpace(k))] = strVal
+			}
+		}
+	} else {
+		// If JSON format is different, try direct map[string]string
+		if directMap, ok := fieldMappingsData["mappings"].(map[string]string); ok {
+			for k, v := range directMap {
+				mappings[strings.ToLower(strings.TrimSpace(k))] = v
+			}
+		}
+	}
+
+	// Get fuzzy matching threshold
+	fuzzyThreshold := 85.0
+	if fuzzyConfig, ok := fieldMappingsData["fuzzy_matching"].(map[string]interface{}); ok {
+		if threshold, ok := fuzzyConfig["threshold"].(float64); ok {
+			fuzzyThreshold = threshold
+		}
+	}
+
+	log.Printf("📋 Loaded %d field mappings (fuzzy threshold: %.1f%%)", len(mappings), fuzzyThreshold)
+
 	// Create mapping from user headers to database fields
 	headerMapping := make(map[int]string)
+	unmappedHeaders := []string{}
 
 	for i, header := range headers {
-		headerStr := strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", header)))
-		
+		headerStr := cleanFieldName(fmt.Sprintf("%v", header))
+
 		// Try exact match first
-		if dbField, exists := fieldMappings[headerStr]; exists {
+		if dbField, exists := mappings[headerStr]; exists {
 			headerMapping[i] = dbField
-			log.Printf("✅ Exact match found: '%s' -> '%s'", headerStr, dbField)
+			log.Printf("✅ Exact match: '%s' -> '%s'", headerStr, dbField)
 			continue
 		}
 
-		// Try fuzzy matching
+		// Try fuzzy matching with improved algorithm
 		bestMatch := ""
+		bestMatchKey := ""
 		bestScore := 0.0
 
-		for userField, dbField := range fieldMappings {
-			score := h.calculateSimilarity(headerStr, userField)
-			if score > 0.6 && score > bestScore { // 60% similarity threshold
+		for userField, dbField := range mappings {
+			score := calculateLevenshteinSimilarity(headerStr, userField)
+			if score >= fuzzyThreshold && score > bestScore {
 				bestMatch = dbField
+				bestMatchKey = userField
 				bestScore = score
 			}
 		}
 
 		if bestMatch != "" {
 			headerMapping[i] = bestMatch
-			log.Printf("🔗 Mapped '%s' -> '%s' (score: %.2f)", headerStr, bestMatch, bestScore)
+			log.Printf("🔗 Fuzzy match: '%s' -> '%s' (matched '%s', confidence: %.1f%%)", headerStr, bestMatch, bestMatchKey, bestScore)
 		} else {
-			log.Printf("⚠️ No mapping found for header: '%s'", headerStr)
+			unmappedHeaders = append(unmappedHeaders, headerStr)
+			log.Printf("⚠️ No mapping found for: '%s'", headerStr)
 		}
+	}
+
+	log.Printf("✅ Mapping complete: %d/%d headers mapped, %d unmapped", len(headerMapping), len(headers), len(unmappedHeaders))
+	if len(unmappedHeaders) > 0 {
+		log.Printf("📝 Unmapped headers: %v", unmappedHeaders)
 	}
 
 	// Create mapped data structure
 	mappedData := map[string]interface{}{
-		"headers": headers,
-		"rows":    rows,
-		"mapping": headerMapping,
+		"headers":         headers,
+		"rows":            rows,
+		"mapping":         headerMapping,
+		"unmapped":        unmappedHeaders,
+		"mapping_summary": fmt.Sprintf("%d/%d mapped", len(headerMapping), len(headers)),
 	}
 
 	return mappedData, nil
 }
 
-// calculateSimilarity calculates string similarity using simple algorithm
-func (h *ExtractionHandler) calculateSimilarity(s1, s2 string) float64 {
-	if s1 == s2 {
-		return 1.0
+// loadFieldMappingsFromJSON loads field mappings from the JSON configuration file
+func loadFieldMappingsFromJSON() (map[string]interface{}, error) {
+	// Try to load from the handlers directory first
+	mappingFile := filepath.Join("internal", "core", "handlers", "field_mappings.json")
+	data, err := os.ReadFile(mappingFile)
+	if err != nil {
+		// Try alternative path
+		mappingFile = filepath.Join("..", "final_extraction_system", "field_mappings.json")
+		data, err = os.ReadFile(mappingFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read field_mappings.json: %v", err)
+		}
 	}
 
-	// Simple similarity based on common substrings
-	common := 0
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse field_mappings.json: %v", err)
+	}
+
+	log.Printf("✅ Loaded field mappings from: %s", mappingFile)
+	return result, nil
+}
+
+// cleanFieldName cleans and normalizes a field name for matching
+func cleanFieldName(fieldName string) string {
+	// Convert to lowercase
+	cleaned := strings.ToLower(fieldName)
+
+	// Trim whitespace
+	cleaned = strings.TrimSpace(cleaned)
+
+	// Replace multiple spaces with single space
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+
+	// Remove special characters like %, (), etc. for matching
+	cleaned = strings.ReplaceAll(cleaned, "%", "")
+	cleaned = strings.ReplaceAll(cleaned, "(", "")
+	cleaned = strings.ReplaceAll(cleaned, ")", "")
+	cleaned = strings.TrimSpace(cleaned)
+
+	return cleaned
+}
+
+// calculateLevenshteinSimilarity calculates similarity percentage using Levenshtein distance
+func calculateLevenshteinSimilarity(s1, s2 string) float64 {
+	if s1 == s2 {
+		return 100.0
+	}
+
+	// Calculate Levenshtein distance
+	distance := levenshteinDistance(s1, s2)
 	maxLen := len(s1)
 	if len(s2) > maxLen {
 		maxLen = len(s2)
 	}
 
-	for i := 0; i < len(s1) && i < len(s2); i++ {
-		if s1[i] == s2[i] {
-			common++
+	if maxLen == 0 {
+		return 100.0
+	}
+
+	// Convert distance to similarity percentage
+	similarity := (1.0 - float64(distance)/float64(maxLen)) * 100.0
+	return similarity
+}
+
+// levenshteinDistance calculates the Levenshtein distance between two strings
+func levenshteinDistance(s1, s2 string) int {
+	if len(s1) == 0 {
+		return len(s2)
+	}
+	if len(s2) == 0 {
+		return len(s1)
+	}
+
+	// Create matrix
+	matrix := make([][]int, len(s1)+1)
+	for i := range matrix {
+		matrix[i] = make([]int, len(s2)+1)
+		matrix[i][0] = i
+	}
+	for j := range matrix[0] {
+		matrix[0][j] = j
+	}
+
+	// Fill matrix
+	for i := 1; i <= len(s1); i++ {
+		for j := 1; j <= len(s2); j++ {
+			cost := 1
+			if s1[i-1] == s2[j-1] {
+				cost = 0
+			}
+
+			matrix[i][j] = min(
+				matrix[i-1][j]+1,      // deletion
+				matrix[i][j-1]+1,      // insertion
+				matrix[i-1][j-1]+cost, // substitution
+			)
 		}
 	}
 
-	return float64(common) / float64(maxLen)
+	return matrix[len(s1)][len(s2)]
 }
 
+// min returns the minimum of three integers
+func min(a, b, c int) int {
+	if a < b {
+		if a < c {
+			return a
+		}
+		return c
+	}
+	if b < c {
+		return b
+	}
+	return c
+}
 
-// saveTableToDatabase saves the mapped table data to the appropriate database table
+// saveTableToDatabase saves the mapped table data to the unified petrography table
 func (h *ExtractionHandler) saveTableToDatabase(mappedData map[string]interface{}) (int, error) {
 	headers, _ := mappedData["headers"].([]interface{})
 	rows, _ := mappedData["rows"].([]interface{})
 	mapping, _ := mappedData["mapping"].(map[int]string)
-	
+	unmapped, _ := mappedData["unmapped"].([]string)
+
 	log.Printf("📋 Headers: %v", headers)
 	log.Printf("🔗 Mapping: %v", mapping)
 	log.Printf("📊 Rows: %d", len(rows))
-	
+
+	if len(rows) == 0 {
+		log.Printf("⚠️ No rows to save")
+		return 0, nil
+	}
+
 	// Get database connection
 	db := h.db
-	
-	// Determine which tables to save to based on mapped fields
-	totalRecords := 0
-	
-	// Check if we have carbonate fields
-	carbonateFields := h.getCarbonateFields(mapping)
-	if len(carbonateFields) > 0 {
-		log.Printf("💾 Saving to petrography_carbonate table with fields: %v", carbonateFields)
-		records, err := h.insertCarbonateRecords(db, headers, rows, mapping)
-		if err != nil {
-			log.Printf("❌ Failed to save to carbonate table: %v", err)
-		} else {
-			totalRecords += records
-			log.Printf("✅ Saved %d records to carbonate table", records)
+
+	// Save to unified table
+	log.Printf("💾 Saving %d rows to petrography_unified table", len(rows))
+	records, err := h.insertUnifiedRecords(db, headers, rows, mapping, unmapped)
+	if err != nil {
+		log.Printf("❌ Failed to save to unified table: %v", err)
+		return 0, err
+	}
+
+	log.Printf("✅ Saved %d records to petrography_unified table", records)
+	return records, nil
+}
+
+// insertUnifiedRecords inserts records into the unified petrography table
+func (h *ExtractionHandler) insertUnifiedRecords(db *gorm.DB, headers []interface{}, rows []interface{}, mapping map[int]string, unmapped []string) (int, error) {
+	recordCount := 0
+
+	log.Printf("📝 Processing %d rows for unified table", len(rows))
+
+	// Iterate through each row
+	for rowIdx, rowInterface := range rows {
+		row, ok := rowInterface.([]interface{})
+		if !ok {
+			log.Printf("⚠️ Row %d: Invalid format, skipping", rowIdx)
+			continue
 		}
-	}
-	
-	// Check if we have clastic fields
-	clasticFields := h.getClasticFields(mapping)
-	if len(clasticFields) > 0 {
-		log.Printf("💾 Saving to petrography_clastic table with fields: %v", clasticFields)
-		records, err := h.insertClasticRecords(db, headers, rows, mapping)
-		if err != nil {
-			log.Printf("❌ Failed to save to clastic table: %v", err)
-		} else {
-			totalRecords += records
-			log.Printf("✅ Saved %d records to clastic table", records)
+
+		// Create a new unified record
+		record := &models.PetrographyUnified{}
+		hasData := false
+
+		// Map each column to the appropriate field
+		for colIdx, mappedField := range mapping {
+			if colIdx >= len(row) {
+				continue
+			}
+
+			cellValue := row[colIdx]
+			if cellValue == nil || cellValue == "" {
+				continue
+			}
+
+			// Convert cell value to string
+			valueStr := fmt.Sprintf("%v", cellValue)
+			valueStr = strings.TrimSpace(valueStr)
+
+			if valueStr == "" || valueStr == "-" || valueStr == "n/a" || valueStr == "N/A" {
+				continue
+			}
+
+			// Set the field value based on mapped field name
+			if h.setUnifiedFieldValue(record, mappedField, valueStr) {
+				hasData = true
+			}
 		}
+
+		// Only save if we have at least one data field
+		if !hasData {
+			log.Printf("⚠️ Row %d: No valid data fields, skipping", rowIdx)
+			continue
+		}
+
+		// Add metadata
+		now := time.Now()
+		record.ExtractionDate = &now
+
+		// Store unmapped fields as JSON
+		if len(unmapped) > 0 {
+			unmappedJSON, _ := json.Marshal(unmapped)
+			unmappedStr := string(unmappedJSON)
+			record.UnmappedFields = &unmappedStr
+		}
+
+		// Save to database
+		if err := db.Create(record).Error; err != nil {
+			log.Printf("❌ Row %d: Failed to save: %v", rowIdx, err)
+			continue
+		}
+
+		recordCount++
+		log.Printf("✅ Row %d: Saved successfully (ID: %d)", rowIdx, record.ID)
 	}
-	
-	if totalRecords == 0 {
-		log.Printf("⚠️ No records saved - no matching fields found")
-		return 0, fmt.Errorf("no matching fields found for any table")
+
+	return recordCount, nil
+}
+
+// setUnifiedFieldValue sets a field value in the PetrographyUnified model based on field name
+func (h *ExtractionHandler) setUnifiedFieldValue(record *models.PetrographyUnified, fieldName, valueStr string) bool {
+	// Try to parse as float for numeric fields
+	floatVal, floatErr := strconv.ParseFloat(valueStr, 64)
+
+	// Map field name to struct field
+	switch fieldName {
+	// Context fields
+	case "well_name_field_name":
+		record.WellNameFieldName = &valueStr
+		return true
+	case "top_depth_mmddf", "depth", "bottom_depth_mmddf": // All depth variations map to single depth field
+		if floatErr == nil {
+			record.Depth = &floatVal
+			return true
+		}
+	case "lithofacies_core":
+		record.LithofaciesCore = &valueStr
+		return true
+
+	// Quartz varieties
+	case "quartz":
+		if floatErr == nil {
+			record.Quartz = &floatVal
+			return true
+		}
+	case "monocrystalline_quartz":
+		if floatErr == nil {
+			record.MonocrystallineQuartz = &floatVal
+			return true
+		}
+	case "polycrystalline_quartz":
+		if floatErr == nil {
+			record.PolycrystallineQuartz = &floatVal
+			return true
+		}
+	case "total_quartz_percent":
+		if floatErr == nil {
+			record.TotalQuartzPercent = &floatVal
+			return true
+		}
+
+	// Feldspar varieties
+	case "feldspar_undifferentiated":
+		if floatErr == nil {
+			record.FeldsparUndifferentiated = &floatVal
+			return true
+		}
+	case "potassium_feldspar":
+		if floatErr == nil {
+			record.PotassiumFeldspar = &floatVal
+			return true
+		}
+	case "plagioclase":
+		if floatErr == nil {
+			record.Plagioclase = &floatVal
+			return true
+		}
+	case "total_feldspar_percent":
+		if floatErr == nil {
+			record.TotalFeldsparPercent = &floatVal
+			return true
+		}
+
+	// Mica varieties
+	case "mica_undifferentiated":
+		if floatErr == nil {
+			record.MicaUndifferentiated = &floatVal
+			return true
+		}
+	case "muscovite":
+		if floatErr == nil {
+			record.Muscovite = &floatVal
+			return true
+		}
+	case "biotite":
+		if floatErr == nil {
+			record.Biotite = &floatVal
+			return true
+		}
+	case "total_mica_percent":
+		if floatErr == nil {
+			record.TotalMicaPercent = &floatVal
+			return true
+		}
+
+	// Carbonate minerals
+	case "calcite":
+		if floatErr == nil {
+			record.Calcite = &floatVal
+			return true
+		}
+	case "dolomite":
+		if floatErr == nil {
+			record.Dolomite = &floatVal
+			return true
+		}
+	case "calcite_blocky":
+		if floatErr == nil {
+			record.CalciteBlocky = &floatVal
+			return true
+		}
+	case "calcite_ferroan":
+		if floatErr == nil {
+			record.CalciteFerroan = &floatVal
+			return true
+		}
+	case "calcite_fringing":
+		if floatErr == nil {
+			record.CalciteFringing = &floatVal
+			return true
+		}
+	case "calcite_mosaic":
+		if floatErr == nil {
+			record.CalciteMosaic = &floatVal
+			return true
+		}
+	case "calcite_syntaxial":
+		if floatErr == nil {
+			record.CalciteSyntaxial = &floatVal
+			return true
+		}
+
+	// Clay minerals
+	case "kaolinite":
+		if floatErr == nil {
+			record.Kaolinite = &floatVal
+			return true
+		}
+	case "chlorite":
+		if floatErr == nil {
+			record.Chlorite = &floatVal
+			return true
+		}
+
+	// Other minerals
+	case "siderite":
+		if floatErr == nil {
+			record.Siderite = &floatVal
+			return true
+		}
+	case "iron_oxide_minerals":
+		if floatErr == nil {
+			record.IronOxideMinerals = &floatVal
+			return true
+		}
+	case "chert":
+		if floatErr == nil {
+			record.Chert = &floatVal
+			return true
+		}
+	case "bioclast", "bioclasts":
+		if floatErr == nil {
+			record.Bioclasts = &floatVal
+			return true
+		}
+	case "replacement":
+		if floatErr == nil {
+			record.Replacement = &floatVal
+			return true
+		}
+
+	// Rock fragments
+	case "plutonic_rock_fragments":
+		if floatErr == nil {
+			record.PlutonicRockFragments = &floatVal
+			return true
+		}
+	case "volcanic_rock_fragment":
+		if floatErr == nil {
+			record.VolcanicRockFragment = &floatVal
+			return true
+		}
+	case "quartzose_rock_fragment":
+		if floatErr == nil {
+			record.QuartzoseRockFragment = &floatVal
+			return true
+		}
+	case "siliciclastic_rock_fragments_undifferentiated":
+		if floatErr == nil {
+			record.SiliciclasticRockFragmentsUndifferentiated = &floatVal
+			return true
+		}
+	case "rip_up_clast":
+		if floatErr == nil {
+			record.RipUpClast = &floatVal
+			return true
+		}
+	case "total_rock_fragments_percent":
+		if floatErr == nil {
+			record.TotalRockFragmentsPercent = &floatVal
+			return true
+		}
+
+	// Matrix types
+	case "matrix_undifferentiated":
+		if floatErr == nil {
+			record.MatrixUndifferentiated = &floatVal
+			return true
+		}
+	case "clay_matrix":
+		if floatErr == nil {
+			record.ClayMatrix = &floatVal
+			return true
+		}
+	case "carbonate_matrix":
+		if floatErr == nil {
+			record.CarbonateMatrix = &floatVal
+			return true
+		}
+	case "organic_matrix":
+		if floatErr == nil {
+			record.OrganicMatrix = &floatVal
+			return true
+		}
+	case "silt_very_fine_matrix":
+		if floatErr == nil {
+			record.SiltVeryFineMatrix = &floatVal
+			return true
+		}
+	case "mixed_clay_silt_fine_matrix":
+		if floatErr == nil {
+			record.MixedClaySiltFineMatrix = &floatVal
+			return true
+		}
+
+	// Porosity types
+	case "visible_porosity_percent":
+		if floatErr == nil {
+			record.VisiblePorosityPercent = &floatVal
+			return true
+		}
+	case "total_porosity_percent":
+		if floatErr == nil {
+			record.TotalPorosityPercent = &floatVal
+			return true
+		}
+	case "total_secondary_porosity_percent":
+		if floatErr == nil {
+			record.TotalSecondaryPorosityPercent = &floatVal
+			return true
+		}
+	case "interparticle":
+		if floatErr == nil {
+			record.Interparticle = &floatVal
+			return true
+		}
+	case "intraparticle":
+		if floatErr == nil {
+			record.Intraparticle = &floatVal
+			return true
+		}
+	case "mouldic":
+		if floatErr == nil {
+			record.Mouldic = &floatVal
+			return true
+		}
+	case "vuggy":
+		if floatErr == nil {
+			record.Vuggy = &floatVal
+			return true
+		}
+	case "fractures":
+		if floatErr == nil {
+			record.Fractures = &floatVal
+			return true
+		}
+	case "intergranular":
+		if floatErr == nil {
+			record.Intergranular = &floatVal
+			return true
+		}
+
+	// Cement
+	case "total_cement_percent":
+		if floatErr == nil {
+			record.TotalCementPercent = &floatVal
+			return true
+		}
+
+	default:
+		log.Printf("⚠️ Unknown field: %s", fieldName)
+		return false
 	}
-	
-	return totalRecords, nil
+
+	return false
 }
 
 // getCarbonateFields returns the fields that belong to the carbonate table
@@ -754,11 +1238,11 @@ func (h *ExtractionHandler) isCarbonateField(field string) bool {
 		"depofacies": true, "analysis_types": true, "visible_porosity_percent": true,
 		"he_porosity_percent": true, "permeability_md": true, "grain_density_g_cc": true,
 	}
-	
+
 	if commonFields[field] {
 		return true
 	}
-	
+
 	// Carbonate-specific fields
 	carbonateSpecific := map[string]bool{
 		"calcite": true, "dolomite": true, "micrite": true, "micrite_envelopes": true,
@@ -781,7 +1265,7 @@ func (h *ExtractionHandler) isCarbonateField(field string) bool {
 		"total_dolomite_percent": true, "stylolite": true, "bioturbation": true,
 		"total_accessories_percent": true, "total_percent": true,
 	}
-	
+
 	return carbonateSpecific[field]
 }
 
@@ -799,11 +1283,11 @@ func (h *ExtractionHandler) isClasticField(field string) bool {
 		"depofacies": true, "analysis_types": true, "visible_porosity_percent": true,
 		"he_porosity_percent": true, "permeability_md": true, "grain_density_g_cc": true,
 	}
-	
+
 	if commonFields[field] {
 		return true
 	}
-	
+
 	// Clastic-specific fields
 	clasticSpecific := map[string]bool{
 		"grain_size": true, "grain_shape": true, "grain_contact": true, "sedimentary_structure": true,
@@ -831,7 +1315,7 @@ func (h *ExtractionHandler) isClasticField(field string) bool {
 		"intergranular": true, "pri_porosity_intragranular": true, "total_primary_porosity_percent": true,
 		"sec_porosity_intragranular": true, "intracrystalline": true, "total_secondary_porosity_percent": true,
 	}
-	
+
 	return clasticSpecific[field]
 }
 
@@ -905,9 +1389,9 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				log.Printf("⚠️ No mapping for column %d (value: %s)", colIndex, cellStr)
 				continue
 			}
-			
+
 			log.Printf("📝 Mapping column %d: '%s' -> %s", colIndex, cellStr, fieldName)
-			
+
 			// Map field names to struct fields
 			switch fieldName {
 			// String fields
@@ -947,7 +1431,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.Depofacies = cellStr
 			case "analysis_types":
 				carbonate.AnalysisTypes = cellStr
-			
+
 			// Float64 fields
 			case "latitude":
 				carbonate.Latitude = stringToFloat64Ptr(cellStr)
@@ -995,7 +1479,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.HePorosityPercent = stringToFloat64Ptr(cellStr)
 			case "permeability_md":
 				carbonate.PermeabilityMd = stringToFloat64Ptr(cellStr)
-			
+
 			// Matrix mineralogy
 			case "calcite":
 				carbonate.Calcite = stringToFloat64Ptr(cellStr)
@@ -1013,7 +1497,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.Clay = stringToFloat64Ptr(cellStr)
 			case "total_mineralogy_matrix_percent":
 				carbonate.TotalMineralogyMatrixPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Bioclasts
 			case "bioclasts":
 				carbonate.Bioclasts = stringToFloat64Ptr(cellStr)
@@ -1075,7 +1559,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.UndiffForam = stringToFloat64Ptr(cellStr)
 			case "total_skeletal_percent":
 				carbonate.TotalSkeletalPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Non-skeletal components
 			case "organic":
 				carbonate.Organic = stringToFloat64Ptr(cellStr)
@@ -1091,7 +1575,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.Quartz = stringToFloat64Ptr(cellStr)
 			case "total_non_skeletal_percent":
 				carbonate.TotalNonSkeletalPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Porosity types
 			case "interparticle":
 				carbonate.Interparticle = stringToFloat64Ptr(cellStr)
@@ -1111,7 +1595,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.Micro = stringToFloat64Ptr(cellStr)
 			case "total_porosity_percent":
 				carbonate.TotalPorosityPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Cement types
 			case "fringing":
 				carbonate.Fringing = stringToFloat64Ptr(cellStr)
@@ -1143,7 +1627,7 @@ func (h *ExtractionHandler) insertCarbonateRecords(db *gorm.DB, headers []interf
 				carbonate.Fluorite = stringToFloat64Ptr(cellStr)
 			case "total_cement_percent":
 				carbonate.TotalCementPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Replacement and accessories
 			case "replacement":
 				carbonate.Replacement = stringToFloat64Ptr(cellStr)
@@ -1257,7 +1741,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.SedimentaryStructure = cellStr
 			case "sorting":
 				clastic.Sorting = cellStr
-			
+
 			// Float64 fields
 			case "latitude":
 				clastic.Latitude = stringToFloat64Ptr(cellStr)
@@ -1305,7 +1789,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.AmbientHePorosityPercent = stringToFloat64Ptr(cellStr)
 			case "permeability_md":
 				clastic.PermeabilityMd = stringToFloat64Ptr(cellStr)
-			
+
 			// Clastic mineralogy - Quartz
 			case "monocrystalline_quartz":
 				clastic.MonocrystallineQuartz = stringToFloat64Ptr(cellStr)
@@ -1313,7 +1797,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.PolycrystallineQuartz = stringToFloat64Ptr(cellStr)
 			case "quartz":
 				clastic.TotalQuartzPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Feldspar
 			case "potassium_feldspar":
 				clastic.PotassiumFeldspar = stringToFloat64Ptr(cellStr)
@@ -1323,7 +1807,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.FeldsparUndifferentiated = stringToFloat64Ptr(cellStr)
 			case "feldspar":
 				clastic.TotalFeldsparPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Mica
 			case "muscovite":
 				clastic.Muscovite = stringToFloat64Ptr(cellStr)
@@ -1333,7 +1817,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.MicaUndifferentiated = stringToFloat64Ptr(cellStr)
 			case "mica":
 				clastic.TotalMicaPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Heavy Minerals
 			case "zircon":
 				clastic.Zircon = stringToFloat64Ptr(cellStr)
@@ -1343,7 +1827,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.HeavyMineralsUndifferentiated = stringToFloat64Ptr(cellStr)
 			case "total_heavy_minerals_percent":
 				clastic.TotalHeavyMineralsPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Rock Fragments
 			case "plutonic_rock_fragments":
 				clastic.PlutonicRockFragments = stringToFloat64Ptr(cellStr)
@@ -1353,7 +1837,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.VolcanicRockFragment = stringToFloat64Ptr(cellStr)
 			case "total_igneous_rf_percent":
 				clastic.TotalIgneousRFPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Sedimentary Rock Fragments
 			case "sandstone_siltstone_rock_fragments":
 				clastic.SandstoneSiltstoneRockFragments = stringToFloat64Ptr(cellStr)
@@ -1371,7 +1855,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.TotalSedimentaryRFPercent = stringToFloat64Ptr(cellStr)
 			case "total_rock_fragments_percent":
 				clastic.TotalRockFragmentsPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Matrix
 			case "clay_matrix":
 				clastic.ClayMatrix = stringToFloat64Ptr(cellStr)
@@ -1385,7 +1869,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.MatrixUndifferentiated = stringToFloat64Ptr(cellStr)
 			case "total_matrix_percent":
 				clastic.TotalMatrixPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Authigenic Clay
 			case "kaolinite":
 				clastic.Kaolinite = stringToFloat64Ptr(cellStr)
@@ -1399,7 +1883,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.IlliteReplacesKFeldspar = stringToFloat64Ptr(cellStr)
 			case "total_authigenic_clay_percent":
 				clastic.TotalAuthigenicClayPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Porosity
 			case "intergranular":
 				clastic.Intergranular = stringToFloat64Ptr(cellStr)
@@ -1413,7 +1897,7 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 				clastic.TotalPrimaryPorosityPercent = stringToFloat64Ptr(cellStr)
 			case "total_secondary_porosity_percent":
 				clastic.TotalSecondaryPorosityPercent = stringToFloat64Ptr(cellStr)
-			
+
 			// Other
 			case "pyrite":
 				clastic.Pyrite = stringToFloat64Ptr(cellStr)
@@ -1435,4 +1919,55 @@ func (h *ExtractionHandler) insertClasticRecords(db *gorm.DB, headers []interfac
 
 	log.Printf("✅ Inserted %d clastic records", recordCount)
 	return recordCount, nil
+}
+
+// ============================================
+// REDUCTO JSON PARSER
+// ============================================
+
+// ReductoResponse structure matching the JSON from extractor.py
+type ReductoResponse struct {
+	Filename            string              `json:"filename"`
+	ExtractionDate      string              `json:"extraction_date"`
+	ExtractionMethod    string              `json:"extraction_method"`
+	TotalPagesProcessed int                 `json:"total_pages_processed"`
+	Pages               []ReductoPageResult `json:"pages"`
+}
+
+type ReductoPageResult struct {
+	PageNumber  int           `json:"page_number"`
+	SourceImage string        `json:"source_image"`
+	JobID       string        `json:"job_id"`
+	Duration    float64       `json:"duration"`
+	Result      ReductoResult `json:"result"`
+}
+
+type ReductoResult struct {
+	Chunks []ReductoChunk `json:"chunks"`
+	Parse  *ParseWrapper  `json:"parse"`  // Add this for pipeline responses
+}
+
+type ParseWrapper struct {
+	Duration float64     `json:"duration"`
+	JobID    string      `json:"job_id"`
+	Result   ParseResult `json:"result"`
+}
+
+type ParseResult struct {
+	Chunks []ReductoChunk `json:"chunks"`
+}
+
+type ReductoChunk struct {
+	Blocks []ReductoBlock `json:"blocks"`
+}
+
+type ReductoBlock struct {
+	Type       string                 `json:"type"`
+	Content    string                 `json:"content"`
+	Confidence string                 `json:"confidence"`
+	BBox       map[string]interface{} `json:"bbox"`
+}
+type FrontendResponse struct {
+	AllBlocks []map[string]interface{} `json:"allBlocks"`
+	Filename  string                   `json:"filename"`
 }

@@ -1,10 +1,6 @@
 <template>
   <div class="space-y-1">
-    <label 
-      v-if="label" 
-      :for="inputId" 
-      class="block text-sm font-medium text-gray-700"
-    >
+    <label v-if="label" :for="inputId" class="block text-sm font-medium text-gray-700">
       {{ label }}
       <span v-if="required" class="text-red-500">*</span>
     </label>
@@ -37,45 +33,45 @@ import { computed, ref } from 'vue'
 const props = defineProps({
   modelValue: {
     type: [String, Number],
-    default: ''
+    default: '',
   },
   label: {
     type: String,
-    default: ''
+    default: '',
   },
   type: {
     type: String,
-    default: 'text'
+    default: 'text',
   },
   placeholder: {
     type: String,
-    default: ''
+    default: '',
   },
   error: {
     type: String,
-    default: ''
+    default: '',
   },
   help: {
     type: String,
-    default: ''
+    default: '',
   },
   disabled: {
     type: Boolean,
-    default: false
+    default: false,
   },
   required: {
     type: Boolean,
-    default: false
+    default: false,
   },
   loading: {
     type: Boolean,
-    default: false
+    default: false,
   },
   size: {
     type: String,
     default: 'md',
-    validator: (value) => ['sm', 'md', 'lg'].includes(value)
-  }
+    validator: (value) => ['sm', 'md', 'lg'].includes(value),
+  },
 })
 
 const emit = defineEmits(['update:modelValue', 'blur', 'focus'])
@@ -84,17 +80,18 @@ const inputRef = ref(null)
 const inputId = computed(() => `input-${Math.random().toString(36).substring(2, 9)}`)
 
 const inputClasses = computed(() => {
-  const base = 'block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500'
+  const base =
+    'block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500'
   const sizes = {
     sm: 'px-3 py-2 text-sm',
     md: 'px-3 py-2',
-    lg: 'px-4 py-3 text-lg'
+    lg: 'px-4 py-3 text-lg',
   }
-  const state = props.error 
+  const state = props.error
     ? 'border-red-300 text-red-900 placeholder-red-300 focus:ring-red-500 focus:border-red-500'
     : 'border-gray-300'
   const disabled = props.disabled ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : ''
-  
+
   return `${base} ${sizes[props.size]} ${state} ${disabled}`
 })
 
@@ -113,6 +110,6 @@ const handleFocus = (event) => {
 // Expose focus method
 defineExpose({
   focus: () => inputRef.value?.focus(),
-  blur: () => inputRef.value?.blur()
+  blur: () => inputRef.value?.blur(),
 })
 </script>

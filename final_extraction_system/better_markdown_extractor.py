@@ -2,6 +2,7 @@
 """
 Final Better Markdown Extractor - Clean, readable table output
 Produces high-quality Markdown with properly formatted tables
+Enhanced with field normalization and smart table merging
 """
 import camelot
 import pandas as pd
@@ -13,6 +14,9 @@ import logging
 from tqdm import tqdm
 import hashlib
 from datetime import datetime
+
+# Import table merger for structural merging only
+from modules.table_merger import TableMerger
 
 # -----------------------------
 # CONFIG
@@ -401,16 +405,27 @@ This document contains extracted tables from the PDF file. Each table has been p
 
 def main():
     """Main function"""
+    import sys
+    
     logger.info("🚀 Starting Final Better Markdown Extractor...")
     logger.info("=" * 60)
     
-    # Find PDF files
-    pdf_files = list(Path(PDF_DIR).glob("*.pdf"))
-    if not pdf_files:
-        logger.error(f"❌ No PDF files found in {PDF_DIR}")
-        return
-    
-    logger.info(f"📁 Found {len(pdf_files)} PDF files to process")
+    # Check if specific PDF file is provided as argument
+    if len(sys.argv) > 1:
+        # Process only the specified PDF
+        pdf_path = Path(sys.argv[1])
+        if not pdf_path.exists():
+            logger.error(f"❌ Specified PDF not found: {pdf_path}")
+            return
+        pdf_files = [pdf_path]
+        logger.info(f"📁 Processing specific PDF: {pdf_path.name}")
+    else:
+        # Find all PDF files (batch mode)
+        pdf_files = list(Path(PDF_DIR).glob("*.pdf"))
+        if not pdf_files:
+            logger.error(f"❌ No PDF files found in {PDF_DIR}")
+            return
+        logger.info(f"📁 Found {len(pdf_files)} PDF files to process (batch mode)")
     
     # Initialize extractor
     extractor = BetterCamelotExtractor()
@@ -430,14 +445,53 @@ def main():
             # Remove duplicates
             unique_tables = remove_duplicates(tables)
             
-            logger.info(f"✅ {pdf_path.name} completed:")
+            logger.info(f"✅ Extraction completed:")
             logger.info(f"   📊 Total tables found: {len(tables)}")
             logger.info(f"   🎯 Quality unique tables: {len(unique_tables)}")
             
+            # ========================================
+            # ⭐ Smart Table Merging (Structural Only)
+            # ========================================
+            
+            # Merge related tables (e.g., split tables across pages)
+            logger.info("=" * 60)
+            logger.info("🔧 Smart Table Merging")
+            logger.info("=" * 60)
+            
+            # Load context fields config from mappings
+            try:
+                with open('field_mappings.json', 'r') as f:
+                    mappings_data = json.load(f)
+                    context_config = mappings_data.get('context_fields', None)
+            except FileNotFoundError:
+                logger.warning("⚠️ field_mappings.json not found, using default context fields")
+                context_config = None
+            
+            merger = TableMerger(context_fields_config=context_config)
+            final_tables = merger.merge_tables(unique_tables)
+            
+            # Save merge log for review
+            merger.save_merge_log('merge_log.json')
+            
+            logger.info(f"✅ Merging complete:")
+            logger.info(f"   📊 Tables before merge: {len(unique_tables)}")
+            logger.info(f"   🔗 Tables after merge: {len(final_tables)}")
+            logger.info(f"   ✂️ Tables consolidated: {len(unique_tables) - len(final_tables)}")
+            
+            # ========================================
+            # Save results
+            # ========================================
+            logger.info("=" * 60)
+            logger.info(f"✅ {pdf_path.name} processing completed!")
+            logger.info(f"   📊 Original tables: {len(tables)}")
+            logger.info(f"   🎯 After deduplication: {len(unique_tables)}")
+            logger.info(f"   🔗 After merging: {len(final_tables)}")
+            logger.info("=" * 60)
+            
             # Save as better markdown and JSON
             pdf_name = pdf_path.stem
-            save_better_markdown(unique_tables, pdf_name, pdf_path)
-            save_json_tables(unique_tables, pdf_name, pdf_path)
+            save_better_markdown(final_tables, pdf_name, pdf_path)
+            save_json_tables(final_tables, pdf_name, pdf_path)
             
         except Exception as e:
             logger.error(f"❌ Failed to process {pdf_path.name}: {e}")
