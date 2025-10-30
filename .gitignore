@@ -74,3 +74,5 @@ temp/
 *extraction_env
 *sample
 *.pdf
+*.pyc
+

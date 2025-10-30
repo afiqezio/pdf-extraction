@@ -4,12 +4,10 @@
     <div class="px-4 py-3 border-b border-gray-200 bg-gray-50">
       <div class="flex items-center justify-between">
         <h4 class="text-sm font-medium text-gray-900">Table Editor</h4>
-        <span class="text-xs text-gray-500">
-          {{ allTables?.length || 0 }} table(s) found
-        </span>
+        <span class="text-xs text-gray-500"> {{ allTables?.length || 0 }} table(s) found </span>
       </div>
     </div>
-    
+
     <!-- Table Navigation Sidebar -->
     <div class="px-4 py-2 border-b border-gray-200 bg-gray-50">
       <div class="flex space-x-2 overflow-x-auto">
@@ -21,7 +19,7 @@
             'px-3 py-1 text-xs rounded-full border transition-colors',
             props.selectedTableIndex === tableIndex
               ? 'bg-indigo-100 text-indigo-700 border-indigo-300'
-              : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50',
           ]"
         >
           Table {{ tableIndex + 1 }}
@@ -32,46 +30,122 @@
     <!-- Selected Table Content -->
     <div class="overflow-auto">
       <div v-if="selectedTable" class="p-4">
-
         <!-- Single Table Display -->
         <div v-if="selectedTable" class="border border-gray-200 rounded-lg overflow-hidden">
           <!-- Table Header -->
-          <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <Icon name="heroicons:table-cells" class="h-5 w-5 text-gray-500" />
-              <div>
-                <h5 class="text-sm font-semibold text-gray-900">
-                  Table {{ props.selectedTableIndex + 1 }}
-                </h5>
-                <p class="text-xs text-gray-500">
-                  {{ selectedTable.rows?.length || 0 }} rows × {{ selectedTable.headers?.length || 0 }} columns
-                  <span v-if="selectedTable.confidence" class="ml-2">
-                    • Confidence: {{ (selectedTable.confidence).toFixed(1) }}%
-                  </span>
-                </p>
+          <div class="bg-gray-50 px-4 py-3 border-b border-gray-200">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center space-x-3">
+                <Icon name="heroicons:table-cells" class="h-5 w-5 text-gray-500" />
+                <div>
+                  <div class="flex items-center space-x-2">
+                    <h5 class="text-sm font-semibold text-gray-900">
+                      Table {{ props.selectedTableIndex + 1 }}
+                    </h5>
+
+                    <!-- Merged Table Badge -->
+                    <span
+                      v-if="isMergedTable(selectedTable)"
+                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                    >
+                      🔗 Merged
+                    </span>
+
+                    <!-- Merge Confidence Badge -->
+                    <span
+                      v-if="selectedTable.merge_confidence"
+                      :class="getMergeConfidenceClass(selectedTable.merge_confidence)"
+                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                    >
+                      {{ selectedTable.merge_confidence.toFixed(0) }}% confidence
+                    </span>
+                  </div>
+
+                  <p class="text-xs text-gray-500 mt-1">
+                    {{ selectedTable.rows?.length || 0 }} rows ×
+                    {{ selectedTable.headers?.length || 0 }} columns
+                    <span v-if="selectedTable.confidence" class="ml-2">
+                      • Quality: {{ selectedTable.confidence.toFixed(1) }}%
+                    </span>
+                  </p>
+
+                  <!-- Merge Info -->
+                  <p v-if="isMergedTable(selectedTable)" class="text-xs text-blue-600 mt-1">
+                    ℹ️ Merged from tables: {{ selectedTable.merged_from_tables.join(', ') }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <!-- Add Row Button -->
+                <button
+                  @click="addRow(selectedTableIndex)"
+                  class="px-3 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors"
+                  title="Add new row at the end"
+                >
+                  ➕ Add Row
+                </button>
+
+                <!-- Add Column Button -->
+                <button
+                  @click="addColumn(selectedTableIndex)"
+                  class="px-3 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors"
+                  title="Add new column at the end"
+                >
+                  ➕ Add Column
+                </button>
+
+                <!-- Unmerge Button (if merged) -->
+                <button
+                  v-if="isMergedTable(selectedTable)"
+                  @click="unmergeTable(selectedTableIndex)"
+                  class="px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                  title="Split this merged table back into separate tables"
+                >
+                  ✂️ Unmerge
+                </button>
+
+                <!-- Merge with Next Button -->
+                <button
+                  v-if="canMergeWithNext(selectedTableIndex)"
+                  @click="mergeWithNext(selectedTableIndex)"
+                  class="px-3 py-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors"
+                  title="Merge with the next table"
+                >
+                  🔗 Merge with Next
+                </button>
+
+                <!-- Delete Button -->
+                <button
+                  @click="deleteTable(selectedTableIndex)"
+                  class="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+                >
+                  🗑️ Delete
+                </button>
               </div>
             </div>
-            <button
-              @click="deleteTable(selectedTableIndex)"
-              class="text-red-500 hover:text-red-700 text-xs font-medium"
-            >
-              Delete Table
-            </button>
           </div>
 
           <!-- Table Data with Scroll Container -->
           <div class="relative">
             <!-- Scroll indicator -->
-            <div class="absolute top-3 right-3 z-20 bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-medium shadow-sm pointer-events-none opacity-75">
+            <div
+              class="absolute top-3 right-3 z-20 bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-medium shadow-sm pointer-events-none opacity-75"
+            >
               ← Scroll to see all columns →
             </div>
-            
-            <div class="overflow-x-auto overflow-y-auto max-h-[600px] border-t border-gray-200" style="scrollbar-width: thin;">
-              <table class="w-full divide-y divide-gray-200" style="table-layout: auto;">
+
+            <div
+              class="overflow-x-auto overflow-y-auto max-h-[600px] border-t border-gray-200"
+              style="scrollbar-width: thin"
+            >
+              <table class="w-full divide-y divide-gray-200" style="table-layout: auto">
                 <!-- Column Delete Buttons -->
                 <thead class="bg-gray-50 sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th class="px-3 py-2 h-10 w-12 bg-gray-50 sticky left-0 z-20 border-r border-gray-200">
+                    <th
+                      class="px-3 py-2 h-10 w-12 bg-gray-50 sticky left-0 z-20 border-r border-gray-200"
+                    >
                       <!-- Empty for row delete column -->
                     </th>
                     <th
@@ -88,45 +162,70 @@
                       </button>
                     </th>
                   </tr>
-                <!-- Header Row - Now Deletable -->
-                <tr class="hover:bg-gray-100">
-                  <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-12 sticky left-0 z-20 border-r border-gray-200">
-                    <button
-                      @click="deleteHeaderRow(selectedTableIndex)"
-                      class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
-                      :title="`Delete header row`"
+                  <!-- Header Row - Now Deletable -->
+                  <tr class="hover:bg-gray-100">
+                    <th
+                      class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 w-12 sticky left-0 z-20 border-r border-gray-200"
                     >
-                      <Icon name="heroicons:trash" class="h-3 w-3" />
-                    </button>
-                  </th>
-                  <th
-                    v-for="(header, columnIndex) in selectedTable.headers"
-                    :key="`header-${columnIndex}`"
-                    class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 min-w-[200px]"
-                  >
-                    <input
-                      v-model="selectedTable.headers[columnIndex]"
-                      class="w-full min-w-[180px] bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded px-1"
-                      @blur="updateTableData(selectedTableIndex)"
-                    />
-                  </th>
-                </tr>
+                      <button
+                        @click="deleteHeaderRow(selectedTableIndex)"
+                        class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
+                        :title="`Delete header row`"
+                      >
+                        <Icon name="heroicons:trash" class="h-3 w-3" />
+                      </button>
+                    </th>
+                    <th
+                      v-for="(header, columnIndex) in selectedTable.headers"
+                      :key="`header-${columnIndex}`"
+                      class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 min-w-[200px]"
+                    >
+                      <input
+                        v-model="selectedTable.headers[columnIndex]"
+                        class="w-full min-w-[180px] bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded px-1"
+                        @blur="updateTableData(selectedTableIndex)"
+                      />
+                    </th>
+                  </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                   <tr
                     v-for="(row, rowIndex) in selectedTable.rows"
                     :key="`row-${rowIndex}`"
-                    class="hover:bg-gray-50 transition-colors"
+                    class="hover:bg-gray-50 transition-colors group"
                   >
-                    <!-- Delete Row Button - Sticky -->
-                    <td class="px-3 py-2 text-sm text-gray-500 w-12 bg-white sticky left-0 z-10 border-r border-gray-200">
-                      <button
-                        @click="deleteRow(selectedTableIndex, rowIndex)"
-                        class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1.5 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
-                        :title="`Delete row ${rowIndex + 1}`"
-                      >
-                        <Icon name="heroicons:trash" class="h-3 w-3" />
-                      </button>
+                    <!-- Row Actions - Sticky -->
+                    <td
+                      class="px-1 py-2 text-sm text-gray-500 w-12 bg-white sticky left-0 z-10 border-r border-gray-200"
+                    >
+                      <div class="flex flex-col space-y-1">
+                        <!-- Insert Row Above -->
+                        <button
+                          @click="insertRowAbove(selectedTableIndex, rowIndex)"
+                          class="text-emerald-600 hover:text-emerald-700 bg-white border border-emerald-200 rounded p-1 hover:bg-emerald-50 transition-colors shadow-sm w-8 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100"
+                          :title="`Insert row above row ${rowIndex + 1}`"
+                        >
+                          <Icon name="heroicons:arrow-up" class="h-3 w-3" />
+                        </button>
+
+                        <!-- Delete Row Button -->
+                        <button
+                          @click="deleteRow(selectedTableIndex, rowIndex)"
+                          class="text-red-500 hover:text-red-700 bg-white border border-red-200 rounded-full p-1 hover:bg-red-50 transition-colors shadow-sm w-8 h-8 flex items-center justify-center"
+                          :title="`Delete row ${rowIndex + 1}`"
+                        >
+                          <Icon name="heroicons:trash" class="h-3 w-3" />
+                        </button>
+
+                        <!-- Insert Row Below -->
+                        <button
+                          @click="insertRowBelow(selectedTableIndex, rowIndex)"
+                          class="text-emerald-600 hover:text-emerald-700 bg-white border border-emerald-200 rounded p-1 hover:bg-emerald-50 transition-colors shadow-sm w-8 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100"
+                          :title="`Insert row below row ${rowIndex + 1}`"
+                        >
+                          <Icon name="heroicons:arrow-down" class="h-3 w-3" />
+                        </button>
+                      </div>
                     </td>
                     <!-- Editable Data Cells -->
                     <td
@@ -150,7 +249,10 @@
     </div>
 
     <!-- Empty state if no tables -->
-    <div v-if="!allTables || allTables.length === 0" class="text-center py-8 border border-gray-200 rounded-lg">
+    <div
+      v-if="!allTables || allTables.length === 0"
+      class="text-center py-8 border border-gray-200 rounded-lg"
+    >
       <Icon name="heroicons:table-cells" class="mx-auto h-12 w-12 text-gray-400" />
       <p class="mt-2 text-sm text-gray-500">No tables extracted</p>
     </div>
@@ -164,19 +266,25 @@ import { computed } from 'vue'
 const props = defineProps({
   allTables: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   selectedTableIndex: {
     type: Number,
-    default: 0
-  }
+    default: 0,
+  },
 })
 
 // ===== EMITS =====
 const emit = defineEmits([
   'table-selected',
-  'table-updated', 
-  'table-deleted'
+  'table-updated',
+  'table-deleted',
+  'table-unmerged',
+  'tables-merged',
+  'row-added',
+  'column-added',
+  'row-inserted',
+  'column-inserted',
 ])
 
 // ===== COMPUTED =====
@@ -213,5 +321,53 @@ const deleteHeaderRow = (tableIndex) => {
 
 const deleteTable = (tableIndex) => {
   emit('table-deleted', { type: 'table', tableIndex })
+}
+
+// ===== MERGE/UNMERGE FUNCTIONS =====
+const isMergedTable = (table) => {
+  return table && table.merged_from_tables && table.merged_from_tables.length > 0
+}
+
+const getMergeConfidenceClass = (confidence) => {
+  if (confidence >= 90) return 'bg-green-100 text-green-800'
+  if (confidence >= 70) return 'bg-yellow-100 text-yellow-800'
+  return 'bg-red-100 text-red-800'
+}
+
+const canMergeWithNext = (tableIndex) => {
+  return tableIndex < (props.allTables?.length || 0) - 1
+}
+
+const unmergeTable = (tableIndex) => {
+  emit('table-unmerged', tableIndex)
+}
+
+const mergeWithNext = (tableIndex) => {
+  emit('tables-merged', { table1Index: tableIndex, table2Index: tableIndex + 1 })
+}
+
+// ===== ADD ROW/COLUMN FUNCTIONS =====
+const addRow = (tableIndex) => {
+  emit('row-added', { tableIndex, position: 'end' })
+}
+
+const addColumn = (tableIndex) => {
+  emit('column-added', { tableIndex, position: 'end' })
+}
+
+const insertRowAbove = (tableIndex, rowIndex) => {
+  emit('row-inserted', { tableIndex, rowIndex, position: 'above' })
+}
+
+const insertRowBelow = (tableIndex, rowIndex) => {
+  emit('row-inserted', { tableIndex, rowIndex, position: 'below' })
+}
+
+const insertColumnLeft = (tableIndex, columnIndex) => {
+  emit('column-inserted', { tableIndex, columnIndex, position: 'left' })
+}
+
+const insertColumnRight = (tableIndex, columnIndex) => {
+  emit('column-inserted', { tableIndex, columnIndex, position: 'right' })
 }
 </script>

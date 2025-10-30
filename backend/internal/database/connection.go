@@ -83,6 +83,7 @@ func Migrate(db *gorm.DB) error {
 		&models.MetadataInfo{},
 		&models.EPBEPetrographyCarbonate{},
 		&models.EPBEPetrographyClastic{},
+		&models.PetrographyUnified{}, // New unified table for all petrography data
 	)
 
 	if err != nil {

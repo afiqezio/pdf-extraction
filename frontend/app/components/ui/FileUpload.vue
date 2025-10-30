@@ -2,7 +2,7 @@
   <div class="bg-white shadow rounded-lg">
     <div class="px-4 py-5 sm:p-6">
       <h3 class="text-lg font-medium text-gray-900 mb-4">Upload File</h3>
-      
+
       <!-- File Upload Area -->
       <div
         ref="dropZone"
@@ -19,12 +19,9 @@
           accept=".csv,.xlsx,.xls,.json,.xml,.txt,.pdf"
           @change="handleFileSelect"
         />
-        
+
         <div class="text-center">
-          <Icon 
-            name="heroicons:cloud-arrow-up" 
-            class="mx-auto h-12 w-12 text-gray-400" 
-          />
+          <Icon name="heroicons:cloud-arrow-up" class="mx-auto h-12 w-12 text-gray-400" />
           <div class="mt-4">
             <p class="text-sm text-gray-600">
               <span class="font-medium text-indigo-600 hover:text-indigo-500 cursor-pointer">
@@ -32,9 +29,7 @@
               </span>
               or drag and drop
             </p>
-            <p class="text-xs text-gray-500 mt-1">
-              PDF, CSV, Excel, JSON, XML, TXT files
-            </p>
+            <p class="text-xs text-gray-500 mt-1">PDF, CSV, Excel, JSON, XML, TXT files</p>
           </div>
         </div>
       </div>
@@ -49,10 +44,7 @@
               <p class="text-xs text-gray-500">{{ formatFileSize(selectedFile.size) }}</p>
             </div>
           </div>
-          <button
-            @click="clearFile"
-            class="text-gray-400 hover:text-gray-600"
-          >
+          <button @click="clearFile" class="text-gray-400 hover:text-gray-600">
             <Icon name="heroicons:x-mark" class="h-5 w-5" />
           </button>
         </div>
@@ -84,16 +76,16 @@ import { ref, computed } from 'vue'
 const props = defineProps({
   isUploading: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 })
 
 // ===== EMITS =====
 // Define what this component sends to parent
 const emit = defineEmits([
-  'file-selected',    // When user selects a file
-  'file-cleared',     // When user clears the file
-  'upload-requested'  // When user clicks upload button
+  'file-selected', // When user selects a file
+  'file-cleared', // When user clears the file
+  'upload-requested', // When user clicks upload button
 ])
 
 // ===== REACTIVE STATE =====
@@ -107,9 +99,7 @@ const dropZone = ref(null)
 // ===== COMPUTED =====
 const dropZoneClasses = computed(() => [
   'border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors',
-  isDragOver.value 
-    ? 'border-indigo-500 bg-indigo-50' 
-    : 'border-gray-300 hover:border-gray-400'
+  isDragOver.value ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-gray-400',
 ])
 
 // ===== METHODS =====
@@ -128,7 +118,7 @@ const handleDragLeave = (e) => {
 const handleDrop = (e) => {
   e.preventDefault()
   isDragOver.value = false
-  
+
   const files = e.dataTransfer.files
   if (files.length > 0) {
     handleFileSelect({ target: { files } })
